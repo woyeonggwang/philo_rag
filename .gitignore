@@ -1,0 +1,62 @@
+# ─── 비밀 정보 (절대 커밋 금지) ───────────────────────────────
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# ─── Python / 백엔드 ─────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# 재생성 가능한 산출물
+backend/data/index/
+*.faiss
+*.index
+*.pkl
+
+# 허깅페이스 / 모델 캐시
+.cache/
+models/
+
+# ─── Flutter / Dart ──────────────────────────────────────────
+mobile/build/
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/.pub-cache/
+mobile/.pub/
+**/generated_plugin_registrant.*
+
+# ─── Android ─────────────────────────────────────────────────
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/android/key.properties
+*.keystore
+*.jks
+mobile/android/app/debug/
+mobile/android/app/profile/
+mobile/android/app/release/
+
+# ─── iOS (나중에 대비) ───────────────────────────────────────
+mobile/ios/Pods/
+mobile/ios/.symlinks/
+mobile/ios/Flutter/Flutter.framework
+mobile/ios/Flutter/Generated.xcconfig
+mobile/ios/Flutter/flutter_export_environment.sh
+
+# ─── 에디터 / OS ─────────────────────────────────────────────
+.vscode/
+!.vscode/settings.json
+.idea/
+*.iml
+Thumbs.db
+desktop.ini
+.DS_Store
