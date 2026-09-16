@@ -21,8 +21,7 @@ philo_rag/
 │  ├─ requirements.txt
 │  ├─ app/               FastAPI 애플리케이션 코드
 │  └─ data/
-│     ├─ corpus/         .txt / .jsonl (커밋함)
-│     ├─ excluded/       제외분 보관 (커밋함)
+│     ├─ corpus/         .txt / _units.jsonl (커밋함)
 │     └─ index/          FAISS 인덱스 (커밋 안 함 — 재생성 가능)
 ├─ scripts/              코퍼스 빌드 / 인덱스 빌드 스크립트
 └─ mobile/               Flutter 앱 (flutter create 로 생성 예정)
@@ -37,12 +36,21 @@ philo_rag/
 | Android Studio | Quail 2026.1.2 | |
 | Android SDK | 36.0.0 | `C:\Users\USER\AppData\Local\Android\Sdk` |
 | **cmdline-tools** | **22.0 고정** | 23.x 금지 — 6절 참조 |
-| Python | 3.11 | |
-| GPU | RTX 5070 | BGE-M3 임베딩 로컬 실행용 |
+| Python | 3.11.16 | **conda 환경 `philo-rag`**. venv 아님 — 아래 참조 |
+| PyTorch | 2.11.0+cu128 | `arch list` 에 `sm_120` 포함 확인 완료 |
+| NVIDIA 드라이버 | 595.97 (CUDA 13.2) | cu128 빌드와 호환 |
+| GPU | RTX 5070 (Blackwell, sm_120) | BGE-M3 임베딩 로컬 실행용, VRAM 12GB |
 
 - Flutter SDK는 저장소 **바깥**(`C:\dev\flutter`)에 둔다. 저장소 안에 넣으면 SDK 자체가 git 저장소라 중첩 문제가 생긴다.
 - `flutter doctor` 의 **Visual Studio 항목이 `[!]` 인 것은 정상**이다. Windows 데스크톱 앱을 빌드하지 않으므로 무시한다.
 - Windows 개발자 모드 ON. 플러터 플러그인이 심볼릭 링크를 쓰기 때문에 필요하다.
+- **파이썬 환경은 conda 를 쓴다.** 이 PC 의 PATH 에 잡히는 `python` 은 Microsoft Store 스텁
+  (`AppData\Local\Microsoft\WindowsApps\python.exe`)이라 개발용으로 쓰지 않는다. `py` 런처도 설치돼 있지 않다.
+  실제 파이썬은 `C:\Users\USER\anaconda3` 이고, 기존 환경으로 `mlagents`, `unique3d-py311` 이 있다.
+  `philo-rag` 는 그것들과 완전히 분리된 별도 환경이므로 충돌하지 않는다.
+- **torch 는 `requirements.txt` 에 넣지 않는다.** 일반 pip 로 받으면 CPU 빌드가 깔려 임베딩이 GPU 를 못 쓴다.
+  `pip install torch --index-url https://download.pytorch.org/whl/cu128` 로 따로 설치하고,
+  `torch.cuda.get_arch_list()` 에 `sm_120` 이 있는지 반드시 확인한다.
 
 ## 2. 확정된 설계 결정
 
@@ -82,8 +90,12 @@ philo_rag/
 3. **중복** — 이미 코퍼스에 있는 텍스트의 축자 재인용
 4. **서지 부속물** — 목차, 판권지, 식자공 노트, PG 보일러플레이트
 
-제외분은 삭제하지 않고 `backend/data/excluded/`에 보관한다. 향후 메타 질문용 보조 인덱스로 쓸 수 있으나
-**페르소나 인덱스와 절대 섞지 않는다.**
+**제외분은 보관하지 않는다 (2026-09-16 확정).** 엘리자베트 서문, Ludovici 주해 등 제외된 글은
+코퍼스에 다시 넣지 않으며, 별도 폴더에 보관하지도 않고, 재수집하지도 않는다.
+검색에 쓰이지 않는 텍스트를 저장소에 두는 것은 의미가 없다는 판단이다.
+무엇을 제외했는지는 각 `.txt` 머리말과 `scripts/build_*.py` 의 제외 로직에 남아 있어 근거로 충분하다.
+
+향후 이 결정을 되돌리자는 제안은 하지 않는다.
 
 ## 3. 코퍼스 포맷
 
@@ -114,7 +126,10 @@ Division 1. Prejudices of Philosophers
 - `237A` 처럼 원문에 알파벳 접미가 붙은 절은 접미를 유지
 - 운문 블록은 한 단위로 묶고 줄바꿈·들여쓰기 보존
 - 곡선 따옴표는 ASCII 정규화, `_이탤릭_` 마크업 제거, 엠대시는 보존
-- 각 `.txt`마다 같은 이름의 `.jsonl` 동봉 (`ref/work/year/translator/pg_id/division/division_title/section/section_suffix/numbered/text`)
+- 각 `.txt`마다 **`<작품명>_units.jsonl`** 동봉. `scripts/build_jsonl.py` 가 `.txt` 를 역파싱해 생성한다
+- JSONL 필드: `uid / seq / ref / persona / work / author / year / translator / pg_id / part /
+  division / division_title / section / section_suffix / author_section / numbered / anomaly / text`
+- **고유 키는 `ref` 가 아니라 `uid`** (`<파일명>#<순번>`). `ref` 는 `.txt` 에 적힌 그대로 두며 드물게 중복된다 (9절 참조)
 
 ## 4. 수집 완료 현황 (6작품, 2026-09-16)
 
@@ -184,7 +199,26 @@ Flutter가 아직 대응하지 않았다. Flutter 측 미해결 이슈다.
 탐색기 우클릭 "압축 풀기"로 풀면 `C:\dev\flutter_windows_3.47.4-stable\flutter\bin` 이 되어
 PATH에 등록한 `C:\dev\flutter\bin` 과 맞지 않는다. 최종 경로가 `C:\dev\flutter\bin\flutter.bat` 이 되도록 정리해야 한다.
 
-### 6.3 Gutenberg 도메인은 컨테이너 셸에서 차단됨 (2026-09-01)
+### 6.3 JSONL 은 원본 PG 파일 없이 .txt 역파싱으로 재생성한다 (2026-09-16)
+
+**상황**: 니체 6작품 중 차라투스트라를 뺀 5작품의 `.jsonl` 과 원본 Gutenberg 파일이 남아 있지 않았다.
+
+**해결**: `scripts/build_jsonl.py` 로 완성된 `.txt` 를 역파싱해 생성한다. `.txt` 머리말에 서지 정보가,
+`Division N. 제목` 줄에 구분이, `<구분>:<절> 본문` 줄에 인용 ID가 들어 있어 원본 없이도 복원된다.
+
+**검증**: 차라투스트라는 원본 `.jsonl` 이 남아 있어 대조가 가능했다.
+역파싱 결과가 **3,489 / 3,489 레코드 모두 ref·text 완전 일치**했다. 역파서가 옳다는 근거다.
+
+**주의**: `.txt` 에서 첫 줄 들여쓰기는 `"<ref> "` 접두사에 먹혀 사라진다. 운문 블록은
+이어지는 줄들의 공통 들여쓰기를 첫 줄에 되돌려야 원본과 일치한다. 이 처리를 빼면 24개 운문 단위가 어긋난다.
+
+### 6.4 Anaconda Prompt 는 cmd 라서 `cd` 로 드라이브가 안 바뀐다 (2026-09-16)
+
+`cd D:\ai_project\philo_rag\backend` 를 쳐도 현재 위치가 C: 그대로다. cmd 의 동작이다.
+`cd /d D:\...` 를 쓰거나, `D:` 를 먼저 입력한 뒤 `cd \ai_project\...` 로 이동한다.
+PowerShell 에서는 `cd` 만으로 드라이브가 바뀐다.
+
+### 6.5 Gutenberg 도메인은 컨테이너 셸에서 차단됨 (2026-09-01)
 
 **증상**: `curl https://www.gutenberg.org/...` → `curl: (56) CONNECT tunnel failed, response 403`
 
@@ -212,13 +246,28 @@ Gutenberg 텍스트를 파싱할 때 실제로 발목을 잡은 것들.
 4. **구형 PG 파일은 `*** END ***` 마커 앞에 `End of Project Gutenberg's ...` 줄을 또 넣는다**
 5. 줄바꿈은 CRLF. 곡선 따옴표 때문에 제목 정규식이 빗나간다 → 정규화를 매칭보다 먼저
 
-## 8. 남은 전처리 계획
+## 8. 원본 .txt 의 알려진 결함 (2026-09-16, JSONL 생성 중 발견)
+
+인용 ID(`ref`)가 중복되는 단위가 6건 있다. `build_books.py` 가 원본 Gutenberg 텍스트를 처리할 때 생긴 것으로,
+**본문 유실은 없고 번호만 어긋난다.** 4,170 단위 중 6건(0.14%)이다.
+
+고치지 않는다. `.txt` 와 `.jsonl` 의 1:1 대응을 깨뜨리지 않기 위해서다.
+대신 JSONL 의 `anomaly` 필드로 표시하고, 고유 키로는 `uid` 를 쓴다.
+
+| 유형 | 내용 | 해당 건 |
+|---|---|---|
+| `epigraph_or_subtitle` | 작품 부제·제사가 1번 절 번호를 받았다. 바로 뒤에 진짜 1절이 온다 | GM `3:1`, EH `7:1`, `10:1`, `12:1` |
+| `fragment_of_previous_section` | 앞 절의 뒷부분이 다음 절 번호를 받았다. 소문자로 시작한다 | EH `2:3`, `2:10` |
+
+`anomaly` 가 `duplicate_ref_in_source` 인 레코드가 진짜 본문이다.
+
+## 9. 남은 전처리 계획
 
 1. 청킹 — **아포리즘 경계를 자르지 않는다.** 짧은 것은 묶고 긴 것만 분할. 고정 길이 분할 금지
 2. 메타데이터 — JSONL에 이미 들어 있음. `persona` 필드만 추가하면 됨
 3. 검증 — 대표 질문 5개로 검색 결과 육안 점검
 
-## 9. 미해결 과제
+## 10. 미해결 과제
 
 ### RAG
 - 벡터 스토어 미정 — FAISS 유력하나 확정 아님
