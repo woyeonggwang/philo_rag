@@ -10,8 +10,12 @@ python-dotenv
 
 # --- RAG ---
 langchain
-langchain-community
+langchain-core
 langchain-google-genai      # 개발용 Gemini Flash
+langchain-openai            # openrouter (프리셋 3) / openai
+# 프로바이더를 바꿀 때만 설치하면 된다 (.env 의 LLM_PROVIDER)
+# langchain-anthropic       # anthropic
+langchain-ollama            # ollama (로컬 GPU, 테스트 전용)
 faiss-cpu                   # Windows 는 faiss-gpu pip 배포가 없다.
                             # 코퍼스가 4,170 단위 규모라 CPU 검색으로 충분하다.
 sentence-transformers       # BGE-M3 임베딩

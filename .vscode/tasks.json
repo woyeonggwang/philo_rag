@@ -1,0 +1,21 @@
+{
+    // 디버거 없이 서버만 띄운다. Ctrl+Shift+B (기본 빌드 작업) 또는 터미널 > 작업 실행 > "백엔드 실행".
+    // 중단점이 필요하면 F5 (launch.json) 를 쓴다.
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "백엔드 실행 (uvicorn --reload)",
+            "type": "process",
+            "command": "C:/Users/USER/anaconda3/envs/philo-rag/python.exe",
+            "args": ["-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"],
+            "options": {
+                "cwd": "${workspaceFolder}/backend",
+                "env": { "PYTHONUTF8": "1" }
+            },
+            "isBackground": true,
+            "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+            "problemMatcher": [],
+            "group": { "kind": "build", "isDefault": true }
+        }
+    ]
+}

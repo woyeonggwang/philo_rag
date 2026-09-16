@@ -1,0 +1,9 @@
+{
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    // conda philo-rag 를 기본 인터프리터로. 새 터미널에서 자동 활성화된다
+    "python.defaultInterpreterPath": "C:/Users/USER/anaconda3/envs/philo-rag/python.exe",
+    "python.terminal.activateEnvironment": true,
+    // uvicorn 로그의 한글이 깨지지 않게 (CLAUDE.md 6.8)
+    "terminal.integrated.env.windows": { "PYTHONUTF8": "1" }
+}

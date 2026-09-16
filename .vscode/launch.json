@@ -1,0 +1,41 @@
+{
+    // F5 (실행 > 디버깅 시작) 로 백엔드를 띄운다. 셸 활성화·환경변수 문제를 전부 우회한다.
+    // 서버가 뜨면 브라우저에 /docs 가 자동으로 열린다.
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "백엔드: uvicorn (중단점 디버그)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": ["app.main:app", "--host", "0.0.0.0", "--port", "8000"],
+            "cwd": "${workspaceFolder}/backend",
+            "python": "C:/Users/USER/anaconda3/envs/philo-rag/python.exe",
+            "env": { "PYTHONUTF8": "1" },
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "serverReadyAction": {
+                "pattern": "Uvicorn running on (https?://\\S+)",
+                "uriFormat": "http://localhost:8000/docs",
+                "action": "openExternally"
+            }
+        },
+        {
+            "name": "백엔드: uvicorn --reload (코드 저장하면 자동 재시작)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": ["app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"],
+            "cwd": "${workspaceFolder}/backend",
+            "python": "C:/Users/USER/anaconda3/envs/philo-rag/python.exe",
+            "env": { "PYTHONUTF8": "1" },
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "serverReadyAction": {
+                "pattern": "Uvicorn running on (https?://\\S+)",
+                "uriFormat": "http://localhost:8000/docs",
+                "action": "openExternally"
+            }
+        }
+    ]
+}
