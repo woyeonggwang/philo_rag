@@ -42,7 +42,11 @@ philo_rag/
 | GPU | RTX 5070 (Blackwell, sm_120) | BGE-M3 임베딩 로컬 실행용, VRAM 12GB |
 
 - Flutter SDK는 저장소 **바깥**(`C:\dev\flutter`)에 둔다. 저장소 안에 넣으면 SDK 자체가 git 저장소라 중첩 문제가 생긴다.
-- `flutter doctor` 의 **Visual Studio 항목이 `[!]` 인 것은 정상**이다. Windows 데스크톱 앱을 빌드하지 않으므로 무시한다.
+- `flutter doctor` 의 **Visual Studio `[!]`** 는 Windows 데스크톱 빌드용 컴포넌트가 빠져 있다는 뜻이다. Android 앱을 먼저 만들고
+  **Windows 버전도 만들 계획**이므로(2.1), 그때 Visual Studio Installer 에서 채운다. VS Community 2026 18.7 은 이미 설치돼 있고
+  (`C:\Program Files\Microsoft Visual Studio8\Community`), 필요한 것은 **"C++ 를 사용한 데스크톱 개발" 워크로드**의
+  `MSVC v142 - VS 2019 C++ x64/x86 build tools` · `C++ CMake tools for Windows` · `Windows 10 SDK` 세 가지다.
+  `flutter doctor -v` 가 정확한 목록을 알려준다.
 - Windows 개발자 모드 ON. 플러터 플러그인이 심볼릭 링크를 쓰기 때문에 필요하다.
 - **파이썬 환경은 conda 를 쓴다.** 이 PC 의 PATH 에 잡히는 `python` 은 Microsoft Store 스텁
   (`AppData\Local\Microsoft\WindowsApps\python.exe`)이라 개발용으로 쓰지 않는다. `py` 런처도 설치돼 있지 않다.
@@ -59,7 +63,7 @@ philo_rag/
 | 항목 | 결정 | 이유 |
 |---|---|---|
 | 앱 프레임워크 | **Flutter** | 한 코드베이스로 Android/iOS. Dart가 C#과 유사해 Unity 경험이 전이됨 |
-| 우선 타깃 | **Android 전용** | macOS 장비가 없어 iOS 빌드·심사 제출이 불가. 코드는 크로스플랫폼으로 유지 |
+| 타깃 순서 | **① Android 앱 → ② Windows 데스크톱** | 앱을 먼저 완성하고 같은 코드베이스로 Windows 버전을 만든다. iOS 는 macOS 장비가 없어 빌드·심사 불가. 코드는 크로스플랫폼으로 유지 |
 | 백엔드 | **FastAPI 서버를 둔다** | 아래 두 가지 이유 |
 | 저장소 | 모노레포 1개 | 1인 개발, 규칙을 CLAUDE.md 하나로 공유 |
 
@@ -508,9 +512,12 @@ FastAPI 백엔드 **동작 확인 완료** (9.1절).
 2. **프롬프트 조정** — 단, 판정은 프리셋 2(Gemini) 로만. 로컬 결과로 프롬프트를 고치지 않는다 (6.11)
    — 이미 한 것: NO_CONTEXT 교체(6.9). 남은 것: A1·E1 잘림/사고 누출(9.2), Gemini 에서 재현 후 처리
    (`app/personas.py` 하나만 고치면 된다. 답변 품질은 대부분 여기서 결정된다)
-3. **Flutter 앱** — `flutter create mobile` 부터. 화면 두 개(페르소나 선택 / 채팅)와 `http` 패키지로 `/ask` 호출.
+3. **Flutter 앱 (Android)** — `flutter create mobile` 부터. 화면 두 개(페르소나 선택 / 채팅)와 `http` 패키지로 `/ask` 호출.
    에뮬레이터에서 PC 의 localhost 는 `127.0.0.1` 이 아니라 **`10.0.2.2`** 다.
-   실기기는 같은 Wi-Fi 에서 PC 의 LAN IP + Windows 방화벽 인바운드 허용
+   실기기는 같은 Wi-Fi 에서 PC 의 LAN IP + Windows 방화벽 인바운드 허용.
+   서버 주소는 앱 안에서 바꿀 수 있게 만든다 (에뮬레이터·실기기·Windows 가 각각 다르다)
+4. **Windows 데스크톱 버전** — 3 이 끝난 뒤. 같은 코드베이스, `flutter create` 시 `--platforms=android,windows` 로 두 플랫폼을 함께 생성해 둔다.
+   빌드 전에 Visual Studio 의 C++ 데스크톱 워크로드를 채워야 한다 (1절). Windows 에서는 서버 주소가 `localhost:8000`
 
 ## 12. 미해결 과제
 
