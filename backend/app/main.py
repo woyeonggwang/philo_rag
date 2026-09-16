@@ -61,6 +61,7 @@ class AskResponse(BaseModel):
     question: str
     answer: str
     grounded: bool
+    safety: bool = False       # 자해·자살 암시가 감지돼 안전 안내가 앞에 붙었는지
     sources: list[Source]
 
 

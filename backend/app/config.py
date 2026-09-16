@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     llm_provider: str = "google"          # google | openai | openrouter | anthropic | ollama
     llm_model: str = "gemini-3.8-flash"
     llm_temperature: float = 0.8          # 페르소나 답변이라 결정적일 필요가 없다
-    llm_max_tokens: int = 2048           # Gemini 는 사고 토큰도 이 한도에 포함된다
+    llm_max_tokens: int = 4096           # Gemini 는 사고 토큰도 이 한도에 포함된다. 2048 은 잘렸다 (9.2)
     # Gemini 사고(thinking) 제어. 둘 다 비어 있으면 모델 기본값을 쓴다.
     #   3.x 계열: llm_thinking_level = low | medium | high  (3.8-flash 는 minimal 거부)
     #   2.5 계열: llm_thinking_budget = 0(끔) | -1(자동) | 토큰 수
