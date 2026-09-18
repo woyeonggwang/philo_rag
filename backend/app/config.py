@@ -36,7 +36,8 @@ class Settings(BaseSettings):
     # OpenAI gpt-5.6 계열은 추론 모델이다. 기본값 medium 이면 사고 토큰이 출력 요금으로 청구된다.
     # "none" 이면 추론이 꺼지고, 동시에 temperature 를 쓸 수 있게 된다
     # (추론이 켜져 있으면 gpt-5 계열은 temperature=1 로 고정된다). CLAUDE.md 6.18
-    openai_reasoning_effort: str = "none"   # none | low | medium | high | xhigh | max
+    # gpt-5 계열에만 보낸다. 빈 값이면 파라미터 자체를 보내지 않는다 (gpt-4o 계열은 이 파라미터를 모른다)
+    openai_reasoning_effort: str = "none"   # none | low | medium | high | xhigh | max | (빈 값)
     openai_api_key: str = ""
     openrouter_api_key: str = ""
     anthropic_api_key: str = ""

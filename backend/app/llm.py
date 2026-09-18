@@ -40,7 +40,9 @@ def get_llm():
             raise RuntimeError("OPENAI_API_KEY 가 .env 에 없습니다.")
         return ChatOpenAI(model=s.llm_model, api_key=s.openai_api_key,
                           max_tokens=s.llm_max_tokens,
-                          reasoning_effort=s.openai_reasoning_effort, **common)
+                          # 빈 문자열이면 None -> 페이로드에서 아예 빠진다.
+                          # gpt-4o 처럼 추론을 모르는 모델에 보내면 거부당한다
+                          reasoning_effort=s.openai_reasoning_effort or None, **common)
 
     if p == "groq":
         # Groq 도 OpenAI 호환이다. 무료 티어에 카드가 필요 없고 추론이 매우 빠르다 (CLAUDE.md 6.15).
