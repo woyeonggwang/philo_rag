@@ -2,9 +2,9 @@
 import logging
 import re
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from . import personas, retriever
+from . import guard, personas, retriever
 from .config import get_settings
 
 log = logging.getLogger(__name__)
@@ -67,6 +67,33 @@ NO_CONTEXT = """아래 질문에 대해 네 글에서 마땅한 구절을 찾지
 다시 말한다: 너는 {name} 본인이다. 1인칭 "나"로, {name}의 말투로, 두 문장만."""
 
 
+def _invoke(persona_key, messages, s) -> str:
+    """LLM 을 한 번 호출하고 본문만 돌려준다. 잘렸거나 한국어가 아니면 예외."""
+    from .llm import get_llm
+    resp = get_llm().invoke(messages)
+
+    # langchain-core 1.x 는 content 가 블록 리스트로 올 수 있다. text 가 text 블록만 합쳐 준다 (사고 블록 제외)
+    text = resp.text.strip()
+    meta = resp.response_metadata or {}
+    finish = meta.get("finish_reason") or meta.get("done_reason")
+    usage = resp.usage_metadata or {}
+    log.info("[%s] finish=%s in=%s out=%s%s", persona_key, finish,
+             usage.get("input_tokens"), usage.get("output_tokens"),
+             f" reasoning={usage['output_token_details'].get('reasoning')}"
+             if usage.get("output_token_details") else "")
+
+    # 사고 토큰이 한도를 다 먹어 본문이 잘리면(Gemini 3.x, CLAUDE.md 9.2 A1·E1) 잘린 조각이나
+    # 사고 과정의 끝자락이 그대로 나간다. 그런 응답은 사용자에게 보내지 않는다.
+    if str(finish).upper() in ("MAX_TOKENS", "LENGTH"):
+        raise RuntimeError(
+            f"답변이 토큰 한도({s.llm_max_tokens})에서 잘렸습니다. LLM_MAX_TOKENS 를 늘리거나 "
+            f"LLM_THINKING_LEVEL 을 낮추세요. (finish_reason={finish})")
+    if not text or not _HANGUL.search(text[:80]):
+        # 한국어 답변이어야 하는데 첫 80자에 한글이 없다 = 사고 누출·영어 응답·빈 응답
+        raise RuntimeError(f"답변 형식 이상 (한국어 아님): {text[:120]!r}")
+    return text
+
+
 def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
     s = get_settings()
     persona = personas.get(persona_key)
@@ -96,31 +123,23 @@ def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
     else:
         user = NO_CONTEXT.format(question=question, name=persona.name)
 
-    from .llm import get_llm
-    resp = get_llm().invoke([
-        SystemMessage(content=persona.system),
-        HumanMessage(content=user),
-    ])
-
-    # langchain-core 1.x 는 content 가 블록 리스트로 올 수 있다. text 가 text 블록만 합쳐 준다 (사고 블록 제외)
-    answer_text = resp.text.strip()
-    finish = (resp.response_metadata or {}).get("finish_reason") \
-        or (resp.response_metadata or {}).get("done_reason")
-    usage = resp.usage_metadata or {}
-    log.info("[%s] finish=%s in=%s out=%s%s", persona_key, finish,
-             usage.get("input_tokens"), usage.get("output_tokens"),
-             f" reasoning={usage['output_token_details'].get('reasoning')}"
-             if usage.get("output_token_details") else "")
-
-    # 사고 토큰이 한도를 다 먹어 본문이 잘리면(Gemini 3.x, CLAUDE.md 9.2 A1·E1) 잘린 조각이나
-    # 사고 과정의 끝자락이 그대로 나간다. 그런 응답은 사용자에게 보내지 않는다.
-    if str(finish).upper() in ("MAX_TOKENS", "LENGTH"):
-        raise RuntimeError(
-            f"답변이 토큰 한도({s.llm_max_tokens})에서 잘렸습니다. LLM_MAX_TOKENS 를 늘리거나 "
-            f"LLM_THINKING_LEVEL 을 낮추세요. (finish_reason={finish})")
-    if not answer_text or not _HANGUL.search(answer_text[:80]):
-        # 한국어 답변이어야 하는데 첫 80자에 한글이 없다 = 사고 누출·영어 응답·빈 응답
-        raise RuntimeError(f"답변 형식 이상 (한국어 아님): {answer_text[:120]!r}")
+    # 규칙 위반이면 무엇을 어겼는지 알려 주고 다시 쓰게 한다 (CLAUDE.md 6.13).
+    # 로컬 8B 는 같은 프롬프트로도 실행마다 말투가 흔들려 프롬프트만으로는 보장되지 않는다.
+    messages = [SystemMessage(content=persona.system), HumanMessage(content=user)]
+    retries = 0
+    for attempt in range(s.max_retries + 1):
+        answer_text = _invoke(persona_key, messages, s)
+        violations = guard.check(persona_key, answer_text,
+                                 grounded=bool(kept), safety=safety)
+        if not violations:
+            break
+        if attempt == s.max_retries:
+            log.warning("[%s] 재생성 후에도 위반: %s", persona_key, " / ".join(violations))
+            break
+        log.info("[%s] 규칙 위반 %d회차: %s", persona_key, attempt + 1, " / ".join(violations))
+        retries += 1
+        messages += [AIMessage(content=answer_text),
+                     HumanMessage(content=guard.retry_message(violations))]
 
     if safety:
         answer_text = SAFETY_NOTICE + "\n\n" + answer_text
@@ -133,6 +152,7 @@ def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
         "answer": answer_text,
         "safety": safety,
         "grounded": bool(kept),
+        "retries": retries,
         "sources": [{
             "work": h["work"],
             "ref": h["ref_start"] if h["ref_end"] == h["ref_start"]

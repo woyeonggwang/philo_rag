@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     # 경로
     index_dir: Path = BACKEND / "data" / "index"
 
+    # 규칙 위반 시 재생성 횟수 (CLAUDE.md 6.13). 0 이면 검사만 하고 재생성하지 않는다
+    max_retries: int = 3
+
     # 검색
     top_k: int = 5
     min_score: float = 0.45               # 이보다 낮으면 근거 없음으로 본다 (2026-09-16 실측: 관련 0.49+, 무관 0.40-)

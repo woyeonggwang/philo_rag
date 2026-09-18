@@ -62,6 +62,7 @@ class AskResponse(BaseModel):
     answer: str
     grounded: bool
     safety: bool = False       # 자해·자살 암시가 감지돼 안전 안내가 앞에 붙었는지
+    retries: int = 0           # 규칙 위반으로 다시 생성한 횟수 (CLAUDE.md 6.13)
     sources: list[Source]
 
 
