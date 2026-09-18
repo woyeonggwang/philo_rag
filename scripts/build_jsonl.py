@@ -38,6 +38,8 @@ PERSONA = {
     "the_antichrist": "nietzsche",
     "ecce_homo": "nietzsche",
     "mathe": "jesus",
+    "mark": "jesus",
+    "luke": "jesus",
 }
 
 DIVISION_RE = re.compile(r"^Division (\d+)\.\s*(.*)$")
