@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # LLM
     llm_provider: str = "google"          # google | groq | openai | openrouter | anthropic | ollama
-    llm_model: str = "gemini-3.8-flash"
+    llm_model: str = "gemini-3.6-flash"   # .env 가 항상 덮어쓴다. 3.8 은 하루 20요청이라 쓰지 않는다 (6.10)
     llm_temperature: float = 0.8          # 페르소나 답변이라 결정적일 필요가 없다
     llm_max_tokens: int = 4096           # Gemini 는 사고 토큰도 이 한도에 포함된다. 2048 은 잘렸다 (9.2)
     # Gemini 사고(thinking) 제어. 둘 다 비어 있으면 모델 기본값을 쓴다.
@@ -32,6 +32,11 @@ class Settings(BaseSettings):
 
     google_api_key: str = ""
     groq_api_key: str = ""
+
+    # OpenAI gpt-5.6 계열은 추론 모델이다. 기본값 medium 이면 사고 토큰이 출력 요금으로 청구된다.
+    # "none" 이면 추론이 꺼지고, 동시에 temperature 를 쓸 수 있게 된다
+    # (추론이 켜져 있으면 gpt-5 계열은 temperature=1 로 고정된다). CLAUDE.md 6.18
+    openai_reasoning_effort: str = "none"   # none | low | medium | high | xhigh | max
     openai_api_key: str = ""
     openrouter_api_key: str = ""
     anthropic_api_key: str = ""

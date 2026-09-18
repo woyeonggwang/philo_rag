@@ -32,11 +32,15 @@ def get_llm():
             **common)
 
     if p == "openai":
+        # gpt-5.6 계열(sol/terra/luna)은 추론 모델이라 기본값 medium 이면 보이지 않는 사고 토큰이
+        # 출력 요금으로 청구된다. reasoning_effort="none" 으로 끈다 (CLAUDE.md 6.18).
+        # max_tokens 는 langchain-openai 가 max_completion_tokens 로 자동 변환한다.
         from langchain_openai import ChatOpenAI
         if not s.openai_api_key:
             raise RuntimeError("OPENAI_API_KEY 가 .env 에 없습니다.")
         return ChatOpenAI(model=s.llm_model, api_key=s.openai_api_key,
-                          max_tokens=s.llm_max_tokens, **common)
+                          max_tokens=s.llm_max_tokens,
+                          reasoning_effort=s.openai_reasoning_effort, **common)
 
     if p == "groq":
         # Groq 도 OpenAI 호환이다. 무료 티어에 카드가 필요 없고 추론이 매우 빠르다 (CLAUDE.md 6.15).
