@@ -95,7 +95,7 @@ philo_rag/
 | 프리셋 | 용도 | 상태 |
 |---|---|---|
 | 1. 로컬 `ollama` / **`qwen3.5:9b`** | 앱 작업, 파이프라인 회귀, 무료·무제한 | 대기 (6.14 비교 승자) |
-| **4. OpenAI 유료 `openai` / `gpt-5.6-luna`** | **현재 사용 중.** 질문 1개 $0.001 | **활성.** `OPENAI_REASONING_EFFORT=none` 필수 (6.18) |
+| **4. OpenAI 유료 `openai` / `gpt-5.6-luna`** | **현재 사용 중.** 질문 1개 $0.0009 | **활성·검증 완료.** `OPENAI_REASONING_EFFORT=none` 필수 (6.18) |
 | 1-B. Groq 무료 `groq` / `openai/gpt-oss-120b` | 품질·프롬프트 검증. 카드 불필요 | **키 등록 완료.** 분당 8,000 토큰 제약 (6.15) |
 | 2. Gemini 무료 `google` / `gemini-3.6-flash` | 프롬프트·안전 검증 (하루 20요청) | 필요할 때 토글 |
 | 3. OpenRouter 유료 `openrouter` | 배포·본격 검증 | 코드·의존성 준비 완료, 키만 없음 |
@@ -580,10 +580,16 @@ gemini-3.6-flash, 사고 minimal, 같은 질문(「삶이 고통스러운데 계
 **모델**: `gpt-5.6-luna`. 2026-07-09 출시, GPT-5.6 3종(Sol/Terra/Luna) 중 저가·고속 티어.
 입력 $0.20 / 출력 $1.20 per 1M. 문맥 105만 토큰, 최대 출력 12.8만.
 
-**키 등록 시 겪은 것**: 결제해도 바로 안 된다. `sk-proj-` 키는 프로젝트 단위라
-**Settings -> Project -> Limits 에서 모델 허용 목록을 따로 열어야** 한다.
-열기 전에는 `403 Project does not have access to model gpt-5.6-luna` 가 나고,
-`/v1/models` 에 구형 18개(gpt-3.5, gpt-4o-mini, embedding, tts, whisper)만 보인다.
+**접근 권한은 3단계다 (2026-09-18 실측). 하나라도 빠지면 `403 does not have access to model`**:
+1. **프로젝트 모델 허용** — Settings -> Project -> Limits. 열기 전에는 `/v1/models` 에 구형 18개만 보인다
+2. **사용 티어** — 누적 $5 결제로 Tier 1. Rate limits 화면에 모델별 한도가 배정된다
+3. **조직 신원 인증** — Settings -> Organization -> 검증. `gpt-5.6` 계열은 **보호된 모델**이라 이게 끝나야 열린다
+
+**가장 헷갈리는 지점**: 1·2 를 마치면 `/v1/models` 목록과 `/v1/models/<id>` 개별 조회가 **성공**하고
+Rate limits 화면에도 `gpt-5.6-luna 500,000 TPM / 5,000,000 TPD` 가 표시된다. 그런데 **추론 호출만 403** 이다.
+인증이 "신원 확인 중"인 동안 그렇다. **목록 권한과 추론 권한은 별개다.** 인증이 끝나면 즉시 된다.
+
+`gpt-4o` 는 프로젝트에 추가해도 여전히 403 이다 (2026-09-18). 구형 모델은 별도 제약이 있는 것으로 보이며 미확인.
 
 **핵심 — 추론 모델이다**: 모델 카드에 `Reasoning.effort supports: none, low, medium (default), high, xhigh, max`.
 **아무 설정도 안 하면 medium 으로 추론**하고, 추론 토큰은 화면에 안 보여도 **출력 요금으로 청구**된다.
@@ -618,14 +624,39 @@ Gemini 실측(2,319 / 3,121 / 1,085)과 1~4% 차이라 서로 검증된다. 한�
 
 **같은 작업에서 luna 가 gpt-4o 보다 10배 싸다.** Gemini 3.6-flash(290개/$1)보다도 3.8배 싸다.
 
-**[확인필요] 두 가지**:
-1. 공식 문서끼리 어긋난다. [가격 페이지](https://developers.openai.com/api/docs/pricing)는 gpt-5.6 계열을
-   "reasoning model 아님"으로 분류하는데 모델 카드는 추론 지원을 명시한다. 한 번 호출해
-   `completion_tokens_details.reasoning_tokens` 를 보면 판명된다. 아직 안 했다
-2. [출력 토큰 과다 청구 버그 제보](https://community.openai.com/t/gpt-5-6-usage-output-tokens-is-9x-actual-generation-re-summed-once-per-reasoning-item-exceeds-max-output-tokens-and-is-what-gets-billed/1386467) —
+**확인 완료 — `reasoning_effort=none` 이면 추론 토큰이 실제로 0 이다** (2026-09-18 실측):
+
+| 질문 | 입력 | 출력 | **추론** | 지연 |
+|---|---|---|---|---|
+| 니체 A1 | 2,362 | 314 | **0** | 8.7초 |
+| 예수 A6 | 3,016 | 258 | **0** | 6.2초 |
+
+질문 1개당 $0.0009. 앞서 계산한 $1당 1,117개가 실측으로 확인됐다.
+`tiktoken` 로컬 예측(2,352)과 실제 입력(2,362)의 오차는 **0.5%** — 채팅 메시지 구조 오버헤드 11토큰뿐이다.
+**호출 없이 `tiktoken` 으로 비용을 미리 계산해도 된다.**
+
+**[확인필요]** [출력 토큰 과다 청구 버그 제보](https://community.openai.com/t/gpt-5-6-usage-output-tokens-is-9x-actual-generation-re-summed-once-per-reasoning-item-exceeds-max-output-tokens-and-is-what-gets-billed/1386467) —
    `usage.output_tokens` 가 실제 생성량의 8~9배로 집계되고 그 값으로 청구된다는 보고. **luna 도 대상**으로 적혀 있다.
    OpenAI 가 접수했고 7월 말 해결된 정황이 있으나 확정 공지는 없다.
    `effort=none` 이면 추론 토큰이 없으므로 이 버그의 영향도 사라진다. 초기에는 대시보드 사용량을 직접 볼 것
+
+**답변 품질 (같은 A1·A6, 근거 이미지 적중률)**:
+
+| 모델 | A1 (니체) | A6 (예수) |
+|---|---|---|
+| **gpt-5.6-luna** | **8/8** | **10/10** |
+| groq gpt-oss-120b | 10/11 (A1 기준) | — |
+| qwen3.5:9b 로컬 | 80% 평균 | — |
+| **gpt-4o-mini** | **0/9 — 전무** | — |
+
+luna 는 구절 5개를 전부 소화했다. 니체 답변에 「죽음의 설교자」·"누군가의 탓"(GM 3:15)·"마약"·"거친 노동"·
+"기다릴 힘"·"자기 망각을 부지런함이라"(Z 9)·"첫 번째 논거"(GM 2:7)가 모두 들어갔다.
+예수 답변은 **새로 추가한 마가·누가 코퍼스를 실제로 썼다** — 겟세마네(막 14:32~47), 과부의 두 렙돈(눅 21:1~4).
+코퍼스 확장의 첫 성과다.
+
+**gpt-4o-mini 는 쓸 수 없다.** 같은 구절 5개를 받고도 근거 이미지가 **하나도** 안 나왔고
+("고통은 성장의 열쇠" 류 일반론으로 채움), 페르소나가 금지한 "고통은 강해지기 위한 시험" 까지 말했다.
+싸지만 RAG 를 붙인 의미가 사라진다. guard 는 말투만 보므로 이런 것을 못 잡는다.
 
 **캐시 할인**: luna 는 캐시 입력이 $0.02 로 **10배 할인**(gpt-4o 는 2배). 시스템 프롬프트 875 토큰이 매번 같은데,
 OpenAI 자동 캐싱은 **1,024 토큰 이상 공통 접두**에만 걸린다. 앞부분을 조금 늘리면 입력비가 더 준다 — 미적용
