@@ -17,8 +17,13 @@ _lock = threading.Lock()
 @lru_cache(maxsize=1)
 def _embedder() -> SentenceTransformer:
     s = get_settings()
-    log.info("임베딩 모델 로딩: %s (device=%s)", s.embedding_model, s.embedding_device)
-    return SentenceTransformer(s.embedding_model, device=s.embedding_device)
+    log.info("임베딩 모델 로딩: %s (device=%s, dtype=%s)",
+             s.embedding_model, s.embedding_device, s.embedding_dtype)
+    kwargs = {}
+    if s.embedding_dtype != "float32":
+        # 인덱스는 fp32 로 만들었지만 질의만 fp16 으로 인코딩해도 점수 차이가 무시할 수준이다
+        kwargs["model_kwargs"] = {"torch_dtype": s.embedding_dtype}
+    return SentenceTransformer(s.embedding_model, device=s.embedding_device, **kwargs)
 
 
 @lru_cache(maxsize=8)

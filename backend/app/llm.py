@@ -38,6 +38,16 @@ def get_llm():
         return ChatOpenAI(model=s.llm_model, api_key=s.openai_api_key,
                           max_tokens=s.llm_max_tokens, **common)
 
+    if p == "groq":
+        # Groq 도 OpenAI 호환이다. 무료 티어에 카드가 필요 없고 추론이 매우 빠르다 (CLAUDE.md 6.15).
+        # 한도는 요청 수가 아니라 토큰 수가 먼저 걸린다 — 하루 20만 토큰 / 우리 호출 평균 3,093 토큰.
+        from langchain_openai import ChatOpenAI
+        if not s.groq_api_key:
+            raise RuntimeError("GROQ_API_KEY 가 .env 에 없습니다.")
+        return ChatOpenAI(model=s.llm_model, api_key=s.groq_api_key,
+                          base_url="https://api.groq.com/openai/v1",
+                          max_tokens=s.llm_max_tokens, **common)
+
     if p == "openrouter":
         # OpenRouter 는 OpenAI 호환 API 다. base_url 만 바꾸면 된다.
         from langchain_openai import ChatOpenAI
@@ -60,6 +70,7 @@ def get_llm():
         from langchain_ollama import ChatOllama
         return ChatOllama(model=s.llm_model, base_url=s.ollama_base_url,
                           num_ctx=s.ollama_num_ctx, num_predict=s.llm_max_tokens,
-                          keep_alive=s.ollama_keep_alive, **common)
+                          keep_alive=s.ollama_keep_alive,
+                          reasoning=s.ollama_reasoning, **common)
 
     raise RuntimeError(f"모르는 LLM_PROVIDER: {s.llm_provider}")

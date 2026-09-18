@@ -12,7 +12,7 @@ class Settings(BaseSettings):
         env_file=BACKEND / ".env", env_file_encoding="utf-8", extra="ignore")
 
     # LLM
-    llm_provider: str = "google"          # google | openai | openrouter | anthropic | ollama
+    llm_provider: str = "google"          # google | groq | openai | openrouter | anthropic | ollama
     llm_model: str = "gemini-3.8-flash"
     llm_temperature: float = 0.8          # 페르소나 답변이라 결정적일 필요가 없다
     llm_max_tokens: int = 4096           # Gemini 는 사고 토큰도 이 한도에 포함된다. 2048 은 잘렸다 (9.2)
@@ -26,8 +26,12 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_num_ctx: int = 8192            # 기본 4096 은 구절 5개(≈3,500토큰) + 답변에 빠듯하다
     ollama_keep_alive: str = "30m"        # 요청 사이에 모델을 VRAM 에서 내리지 않게
+    # qwen3.5 같은 사고(thinking) 모델은 기본값이면 num_predict 를 사고에 다 쓰고 본문이 잘린다.
+    # 페르소나 답변에 사고 과정은 필요 없다. None 이면 모델 기본 동작 (CLAUDE.md 6.14)
+    ollama_reasoning: bool | None = False
 
     google_api_key: str = ""
+    groq_api_key: str = ""
     openai_api_key: str = ""
     openrouter_api_key: str = ""
     anthropic_api_key: str = ""
@@ -35,6 +39,9 @@ class Settings(BaseSettings):
     # 임베딩
     embedding_model: str = "BAAI/bge-m3"
     embedding_device: str = "cuda"
+    # fp16 으로 올리면 VRAM 이 2.4GB -> 1.2GB 로 줄어 그만큼 LLM 에 쓸 수 있다 (CLAUDE.md 6.14).
+    # 검색 점수 차이는 소수점 셋째 자리 수준이라 인덱스를 다시 만들 필요가 없다.
+    embedding_dtype: str = "float16"      # float16 | float32
 
     # 경로
     index_dir: Path = BACKEND / "data" / "index"

@@ -50,6 +50,11 @@ _BANNED_ENDINGS = {
     ],
 }
 
+# 겸양어. 페르소나가 사용자를 윗사람처럼 대하며 화자가 뒤바뀌는 현상 (CLAUDE.md 6.14).
+# qwen3.5 계열에서 예수 페르소나가 "저는 당신에게…"로 말하는 경우가 잦았다.
+# 두 페르소나 모두 자기를 낮추지 않는다. 니체는 "나", 예수는 "내가/나는" 이다.
+_HUMBLE = re.compile(r"(^|[\s\"'(])(저는|제가|저를|저에게|저와|저의|제게)([\s,]|$)")
+
 # 성경 장절·작품 인용 표기. 규칙 4 — 출처는 시스템이 따로 보여준다.
 _CITATION = re.compile(r"\(\s*(마태복음|마태|마|차라투스트라)[^)]*\d+[:：]\d+[^)]*\)|\d+장\s*\d+절")
 
@@ -81,6 +86,11 @@ def check(persona_key: str, text: str, *, grounded: bool, safety: bool) -> list[
         if m:
             bad.append(f'{label}를 썼다("{m.group(0)}"). {howto}')
             break           # 말투 지적은 하나면 충분하다
+
+    m = _HUMBLE.search(text)
+    if m:
+        bad.append(f'자기를 낮추는 겸양어를 썼다("{m.group(2)}"). '
+                   f'상대가 윗사람이 아니다. "저/제가"를 "나/내가"로 바꿔라')
 
     m = _CITATION.search(text)
     if m:
