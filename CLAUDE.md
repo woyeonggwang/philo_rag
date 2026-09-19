@@ -1135,6 +1135,9 @@ mobile/lib/
   증분이 꺼져 있어 빌드가 조금 느리지만 프로젝트가 작아 체감은 없다
 - **평문 HTTP 허용 필수**: 개발 서버가 `http://` 라 `AndroidManifest.xml` 에 `android:usesCleartextTraffic="true"` 와
   `INTERNET` 권한을 넣었다. Android 9+ 는 기본으로 평문을 막는다. **배포 시 https 로 바꾸고 이 속성을 지울 것**
+- **에뮬레이터에서 한글 입력이 안 된다** — 앱 문제가 아니다. PC 키보드는 키 코드로 전달돼 Windows 한글 IME 가 안 먹고,
+  에뮬레이터 Gboard 는 영어 자판만 켜져 있다. 에뮬레이터 설정 → 시스템 → 언어 및 입력 → 화상 키보드 → Gboard → 언어 → 한국어(2벌식) 추가.
+  급하면 PC 에서 복사해 질문칸에 길게 눌러 붙여넣기 (클립보드 공유됨). 실기기는 해당 없음
 - `taskkill /F /IM java.exe` 는 Git Bash 에서 `/F` 가 경로로 바뀌어 안 된다. PowerShell `Get-Process java | Stop-Process -Force` 를 쓴다
 
 **동작 확인 (2026-09-20, 에뮬레이터)**: 앱 → `http://10.0.2.2:8000` → `/health` `/personas` 성공. 세 페르소나(니체·예수·부처)가 화면에 떴다.
