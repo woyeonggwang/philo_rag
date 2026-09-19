@@ -1124,6 +1124,6 @@ mobile/lib/
 - Android 실기기는 USB 디버깅을 켜고 연결하면 `flutter devices` 에 바로 뜬다. 에뮬레이터 없이 이걸로 시작해도 된다
 - Android 빌드 자체(Gradle)는 아직 안 돌려 봤다. 첫 빌드는 Gradle·AGP 다운로드로 수 분 걸린다 `[확인필요]`
 
-**Claude Code 와의 연결**: 별도 설정이 없다. 모노레포라 저장소 루트(`D:i_project\philo_rag`)에서 연 Claude Code 세션이
+**Claude Code 와의 연결**: 별도 설정이 없다. 모노레포라 저장소 루트(`D:\ai_project\philo_rag`)에서 연 Claude Code 세션이
 `mobile/` 까지 그대로 다룬다. 이 CLAUDE.md 가 앱 규칙까지 담는다. Codex 도 같은 루트에서 열고 이 파일을 읽게 한다.
-Flutter 명령은 `C:\devlutterin` 이 PATH 에 있어야 한다 (VS Code 통합 터미널은 PATH 를 물려받으므로 그대로 된다).
+Flutter 명령은 `C:\dev\flutter\bin` 이 PATH 에 있어야 한다 (VS Code 통합 터미널은 PATH 를 물려받으므로 그대로 된다).
