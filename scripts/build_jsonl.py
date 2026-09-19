@@ -40,6 +40,15 @@ PERSONA = {
     "mathe": "jesus",
     "mark": "jesus",
     "luke": "jesus",
+    # 부처 (SuttaCentral, Sujato 역. scripts/build_suttas.py 가 만든다)
+    "dhammapada": "buddha",
+    "sutta_nipata": "buddha",
+    "udana": "buddha",
+    "itivuttaka": "buddha",
+    "dhammacakkappavattana": "buddha",
+    "satipatthana": "buddha",
+    "kalama": "buddha",
+    "mahaparinibbana": "buddha",
 }
 
 DIVISION_RE = re.compile(r"^Division (\d+)\.\s*(.*)$")
@@ -83,7 +92,8 @@ def parse_file(path: Path):
     # 정규식이 끝까지 맞아떨어지는 줄(제목 형식)만 본문 시작으로 인정한다.
     body_start = len(lines)
     for i, line in enumerate(lines):
-        if DIVISION_RE.match(line) or CHAPTER_RE.match(line):
+        # PART 1 은 첫 Division 보다 앞에 오므로 여기서 같이 잡아야 part 가 null 로 남지 않는다 (2026-09-19)
+        if DIVISION_RE.match(line) or CHAPTER_RE.match(line) or PART_RE.match(line):
             body_start = i
             break
 

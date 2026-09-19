@@ -4,7 +4,7 @@ import re
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from . import guard, personas, retriever
+from . import glossary, guard, personas, retriever
 from .config import get_settings
 
 log = logging.getLogger(__name__)
@@ -143,6 +143,8 @@ def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
         "safety": safety,
         "grounded": bool(kept),
         "retries": retries,
+        # 답변에 나온 경전 용어·호칭의 뜻. 앱이 각주로 보여준다 (glossary.py)
+        "glossary": glossary.extract(persona_key, answer_text),
         "sources": [{
             "work": h["work"],
             "ref": h["ref_start"] if h["ref_end"] == h["ref_start"]

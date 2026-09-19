@@ -63,3 +63,6 @@ mobile/ios/Flutter/flutter_export_environment.sh
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# SuttaCentral 트리 캐시 (재생성 가능)
+scripts/.cache/

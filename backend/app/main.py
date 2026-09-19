@@ -55,6 +55,11 @@ class Source(BaseModel):
     score: float
 
 
+class GlossaryItem(BaseModel):
+    term: str
+    meaning: str
+
+
 class AskResponse(BaseModel):
     persona: str
     persona_name: str
@@ -63,6 +68,7 @@ class AskResponse(BaseModel):
     grounded: bool
     safety: bool = False       # 자해·자살 암시가 감지돼 안전 안내가 앞에 붙었는지
     retries: int = 0           # 규칙 위반으로 다시 생성한 횟수 (CLAUDE.md 6.13)
+    glossary: list[GlossaryItem] = []   # 답변 속 용어·호칭의 뜻. 각주용 (glossary.py)
     sources: list[Source]
 
 
