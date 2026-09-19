@@ -3,7 +3,7 @@
 철학자 페르소나(예수 / 니체 / 부처)로 답하는 RAG 챗봇 + Android 앱.
 이 문서는 **확인된 사실만** 기록한다. 미확인 항목은 `[확인필요]`로 표시한다.
 
-최종 갱신: 2026-09-19
+최종 갱신: 2026-09-20
 
 ---
 
@@ -1122,7 +1122,34 @@ mobile/lib/
   cmdline-tools 22 의 `sdkmanager` 로도 된다: `sdkmanager "system-images;android-36;google_apis;x86_64"` 뒤 `flutter emulators --create`
 - `flutter build windows` 는 **VS C++ 워크로드가 없어 실패** (1절). Windows 버전 단계에서 채운다
 - Android 실기기는 USB 디버깅을 켜고 연결하면 `flutter devices` 에 바로 뜬다. 에뮬레이터 없이 이걸로 시작해도 된다
-- Android 빌드 자체(Gradle)는 아직 안 돌려 봤다. 첫 빌드는 Gradle·AGP 다운로드로 수 분 걸린다 `[확인필요]`
+- ~~Android 빌드 자체(Gradle)는 아직 안 돌려 봤다~~ — 2026-09-20 첫 빌드 성공. Gradle 9.3.1 / Kotlin 2.4.0 / AGP 는 Flutter 템플릿 기본.
+  첫 `flutter build apk --debug` 는 다운로드 포함 2분 47초, 이후 30초 안팎
+- 에뮬레이터는 Android Studio Device Manager 에서 **Pixel 9 / API 36 (Google APIs x86_64)** 로 만들었다. `flutter devices` 에
+  `sdk gphone64 x86 64 (emulator-5554)` 로 뜬다. 만들기 전에 "Windows Hypervisor Platform is not enabled" 배너의 Enable 이 필요했다
+
+**첫 빌드에서 겪은 것 (2026-09-20)**:
+- **Kotlin 증분 컴파일 캐시 오류로 빌드 실패**: `:shared_preferences_android:compileDebugKotlin` 에서
+  `Could not close incremental caches … class-fq-name-to-source.tab` / `Storage … is already registered`.
+  `build/` 삭제, `gradlew --stop`, java 프로세스 전부 종료 후에도 같은 자리에서 재현됐다 (데몬 문제가 아니다).
+  **`android/gradle.properties` 에 `kotlin.incremental=false`** 를 넣으니 바로 성공. Kotlin 2.4.0 + Windows 조합의 문제로 보이며 원인은 미확인.
+  증분이 꺼져 있어 빌드가 조금 느리지만 프로젝트가 작아 체감은 없다
+- **평문 HTTP 허용 필수**: 개발 서버가 `http://` 라 `AndroidManifest.xml` 에 `android:usesCleartextTraffic="true"` 와
+  `INTERNET` 권한을 넣었다. Android 9+ 는 기본으로 평문을 막는다. **배포 시 https 로 바꾸고 이 속성을 지울 것**
+- `taskkill /F /IM java.exe` 는 Git Bash 에서 `/F` 가 경로로 바뀌어 안 된다. PowerShell `Get-Process java | Stop-Process -Force` 를 쓴다
+
+**동작 확인 (2026-09-20, 에뮬레이터)**: 앱 → `http://10.0.2.2:8000` → `/health` `/personas` 성공. 세 페르소나(니체·예수·부처)가 화면에 떴다.
+`/ask` 는 아직 앱에서 안 눌렀다 (비용. 사용자가 직접 시험). 백엔드는 이 확인을 위해 셸에서 `uvicorn` 으로 띄웠고 평소엔 VS Code F5.
+
+**구현된 것 (`lib/`, Claude 담당분)**:
+- `api/models.dart` — `Persona / Source / GlossaryItem / AskResponse / HealthResponse`. 서버 Pydantic 모델과 1:1
+- `api/client.dart` — `PhiloRagClient(baseUrl)`: `health()`, `personas()`, `ask(persona, question)`. 오류는 `ApiException`
+  (`statusCode` null 이면 연결 실패, 있으면 서버 오류 + FastAPI `detail`). 응답은 `utf8.decode(bodyBytes)` 로 푼다 (한글).
+  `ask` 타임아웃 90초 (LLM 10~35초 + 재생성)
+- `state/settings.dart` — `SettingsStore`: 서버 주소를 SharedPreferences 에 저장. 기본값은 플랫폼별 (Android `10.0.2.2`, 그 외 `localhost`)
+- `state/chat.dart` — `ChatController`: 페르소나별 메시지 목록, `send()`, `isPending()`. 서버가 stateless 라 이력은 표시용이다
+- `ui/placeholder_home.dart` — **임시 화면**. Codex 가 만들 정식 UI 로 교체. api/·state/ 사용 예시 역할
+- 패키지: `http`, `shared_preferences`. 상태 관리 패키지(provider/riverpod)는 안 썼다 — `ChangeNotifier` + `AnimatedBuilder` 로 충분한 규모.
+  Codex 가 UI 를 만들 때 원하면 그때 붙인다
 
 **Claude Code 와의 연결**: 별도 설정이 없다. 모노레포라 저장소 루트(`D:\ai_project\philo_rag`)에서 연 Claude Code 세션이
 `mobile/` 까지 그대로 다룬다. 이 CLAUDE.md 가 앱 규칙까지 담는다. Codex 도 같은 루트에서 열고 이 파일을 읽게 한다.
