@@ -1046,12 +1046,45 @@ FastAPI 백엔드 **동작 확인 완료** (9.1절).
    - **남은 것**: 부처 페르소나 첫 호출(사용자 지시 시) -> 답변을 불교 아는 쪽에서 교차 검증 -> 16문항에 부처 문항 추가해 재측정
    - 코퍼스가 바뀌면 검색 결과가 바뀌므로 **그 전의 품질 측정치(9.2~9.5)는 기준선으로만 쓴다**
 
-4. **Flutter 앱 (Android)** — `flutter create mobile` 부터. 화면 두 개(페르소나 선택 / 채팅)와 `http` 패키지로 `/ask` 호출.
+4. **Flutter 앱 (Android) — 2026-09-19 `mobile/` 생성 완료 (13절). 현재 여기.** ~~`flutter create mobile` 부터.~~ 화면 두 개(페르소나 선택 / 채팅)와 `http` 패키지로 `/ask` 호출.
    에뮬레이터에서 PC 의 localhost 는 `127.0.0.1` 이 아니라 **`10.0.2.2`** 다.
    실기기는 같은 Wi-Fi 에서 PC 의 LAN IP + Windows 방화벽 인바운드 허용.
    서버 주소는 앱 안에서 바꿀 수 있게 만든다 (에뮬레이터·실기기·Windows 가 각각 다르다)
 5. **Windows 데스크톱 버전** — 4 가 끝난 뒤. 같은 코드베이스, `flutter create` 시 `--platforms=android,windows` 로 두 플랫폼을 함께 생성해 둔다.
    빌드 전에 Visual Studio 의 C++ 데스크톱 워크로드를 채워야 한다 (1절). Windows 에서는 서버 주소가 `localhost:8000`
+
+## 13. Flutter 앱 (2026-09-19 시작)
+
+`flutter create mobile --platforms=android,windows --org com.philorag --project-name philo_rag` 로 생성.
+패키지명 `com.philorag.philo_rag` (Play 스토어 등록 후엔 못 바꾼다 — 바꿀 거면 지금).
+
+**역할 분담 (사용자 결정)**: UI 는 Codex, 기능(API 호출·상태·설정 저장)은 Claude. 충돌을 피하려고 파일을 나눈다:
+```
+mobile/lib/
+├─ main.dart          앱 진입. 라우팅만
+├─ api/               Claude — /ask, /personas 호출, 응답 모델 (AskResponse: answer/grounded/safety/retries/glossary/sources)
+├─ state/             Claude — 서버 주소 설정(SharedPreferences), 대화 상태
+└─ ui/                Codex — 화면·위젯. api/ 의 함수만 호출하고 http 를 직접 쓰지 않는다
+```
+
+**서버 주소** (환경마다 다르다. 앱 안에서 바꿀 수 있게):
+| 실행 환경 | 주소 |
+|---|---|
+| Android 에뮬레이터 | `http://10.0.2.2:8000` (에뮬레이터에서 PC 의 localhost) |
+| 실기기 (같은 Wi-Fi) | `http://192.168.0.10:8000` + 방화벽 인바운드 8000 (6.8) |
+| Windows 데스크톱 | `http://localhost:8000` |
+
+**환경 상태 (2026-09-19 실측)**:
+- `flutter devices`: Windows(desktop)·Chrome·Edge 만 잡힌다. **Android 에뮬레이터가 없다** — 시스템 이미지가 하나도 설치돼 있지 않다
+  (`Sdk/system-images` 폴더 자체가 없음). Android Studio -> Device Manager -> Create Device 에서 만들 것 (이미지 ~1.2GB 다운로드).
+  cmdline-tools 22 의 `sdkmanager` 로도 된다: `sdkmanager "system-images;android-36;google_apis;x86_64"` 뒤 `flutter emulators --create`
+- `flutter build windows` 는 **VS C++ 워크로드가 없어 실패** (1절). Windows 버전 단계에서 채운다
+- Android 실기기는 USB 디버깅을 켜고 연결하면 `flutter devices` 에 바로 뜬다. 에뮬레이터 없이 이걸로 시작해도 된다
+- Android 빌드 자체(Gradle)는 아직 안 돌려 봤다. 첫 빌드는 Gradle·AGP 다운로드로 수 분 걸린다 `[확인필요]`
+
+**Claude Code 와의 연결**: 별도 설정이 없다. 모노레포라 저장소 루트(`D:i_project\philo_rag`)에서 연 Claude Code 세션이
+`mobile/` 까지 그대로 다룬다. 이 CLAUDE.md 가 앱 규칙까지 담는다. Codex 도 같은 루트에서 열고 이 파일을 읽게 한다.
+Flutter 명령은 `C:\devlutterin` 이 PATH 에 있어야 한다 (VS Code 통합 터미널은 PATH 를 물려받으므로 그대로 된다).
 
 ## 12. 미해결 과제
 
