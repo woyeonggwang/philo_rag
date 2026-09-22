@@ -55,13 +55,20 @@ class PhiloRagClient {
 
   /// POST /ask — 앱이 보내는 것은 {persona, question} 뿐이다 (CLAUDE.md 2.1).
   Future<AskResponse> ask(String persona, String question) async {
-    final body = jsonEncode({'persona': persona, 'question': question});
+    final j = await _postJson(
+        '/ask', {'persona': persona, 'question': question}, askTimeout);
+    return AskResponse.fromJson(j as Map<String, dynamic>);
+  }
+
+  Future<dynamic> _postJson(
+      String path, Map<String, dynamic> body, Duration timeout) async {
     final http.Response res;
     try {
       res = await _http
-          .post(_uri('/ask'),
-              headers: const {'Content-Type': 'application/json'}, body: body)
-          .timeout(askTimeout);
+          .post(_uri(path),
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode(body))
+          .timeout(timeout);
     } on SocketException catch (e) {
       throw ApiException(e.message);
     } on HttpException catch (e) {
@@ -70,7 +77,7 @@ class PhiloRagClient {
       // TimeoutException 등
       throw ApiException(e.toString());
     }
-    return AskResponse.fromJson(_decode(res) as Map<String, dynamic>);
+    return _decode(res);
   }
 
   Future<dynamic> _getJson(String path, Duration timeout) async {

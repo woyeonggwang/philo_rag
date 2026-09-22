@@ -55,6 +55,24 @@ def warmup(personas):
             log.warning("%s 인덱스 없음: %s", p, e)
 
 
+@lru_cache(maxsize=8)
+def _chunk_map(persona: str) -> dict:
+    """chunk_id -> 청크. 번역 요청(/translate)이 청크 하나를 되찾을 때 쓴다."""
+    _, chunks = _index(persona)
+    return {c["chunk_id"]: c for c in chunks}
+
+
+def get_chunk(persona: str, chunk_id: str) -> dict:
+    """없으면 KeyError. 인덱스가 없으면 FileNotFoundError (그대로 올린다)."""
+    return _chunk_map(persona)[chunk_id]
+
+
+def ref_label(chunk: dict) -> str:
+    """앱에 보이는 인용 위치. 단위 하나면 "6:25", 묶음이면 "6:17~6:31"."""
+    a, b = chunk["ref_start"], chunk["ref_end"]
+    return a if a == b else f"{a}~{b}"
+
+
 def search(persona: str, query: str, top_k: int | None = None):
     s = get_settings()
     top_k = top_k or s.top_k

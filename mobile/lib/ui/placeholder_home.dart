@@ -9,6 +9,7 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../state/chat.dart';
 import '../state/settings.dart';
+import 'source_tile.dart';
 
 class PlaceholderHome extends StatefulWidget {
   final SettingsStore settings;
@@ -192,9 +193,7 @@ class _MessageTile extends StatelessWidget {
             ],
             if (r != null && r.sources.isNotEmpty) ...[
               const Divider(),
-              for (final s in r.sources)
-                Text('${s.work} ${s.ref}${s.title != null ? ' (${s.title})' : ''}  ${s.score.toStringAsFixed(2)}',
-                    style: theme.textTheme.bodySmall),
+              SourcesSection(sources: r.sources),
             ],
             if (r != null && !r.grounded && !r.safety)
               Text('근거 구절 없음', style: theme.textTheme.labelSmall),

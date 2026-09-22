@@ -3,7 +3,7 @@
 철학자 페르소나(예수 / 니체 / 부처)로 답하는 RAG 챗봇 + Android 앱.
 이 문서는 **확인된 사실만** 기록한다. 미확인 항목은 `[확인필요]`로 표시한다.
 
-최종 갱신: 2026-09-20
+최종 갱신: 2026-09-22
 
 ---
 
@@ -40,6 +40,41 @@ philo_rag/
 | PyTorch | 2.11.0+cu128 | `arch list` 에 `sm_120` 포함 확인 완료 |
 | NVIDIA 드라이버 | 595.97 (CUDA 13.2) | cu128 빌드와 호환 |
 | GPU | RTX 5070 (Blackwell, sm_120) | BGE-M3 임베딩 로컬 실행용, VRAM 12GB |
+
+**두 번째 PC (2026-09-21 구축) — 개발 도구는 전부 D 드라이브 `D:\DevProgram` 아래.** 위 표와 경로가 다르다:
+
+| 항목 | 이 PC 의 위치 | 비고 |
+|---|---|---|
+| Flutter 3.47.5 / Dart 3.13.4 | `D:\DevProgram\flutter` | 사용자 PATH 에 `D:\DevProgram\flutter\bin` |
+| Android Studio | `D:\DevProgram\AndroidStudio` | 설정·캐시는 `D:\DevProgram\AndroidStudio-data` (`STUDIO_PROPERTIES` 환경변수로 지정) |
+| Android SDK | `D:\DevProgram\Android\Sdk` | `ANDROID_HOME`·`ANDROID_SDK_ROOT` + `flutter config --android-sdk`. cmdline-tools 는 `cmdline-tools\latest` 에 **22.0** |
+| AVD (가상기기) | `D:\DevProgram\Android\avd` | `ANDROID_AVD_HOME`. `Pixel_9_API_36` (google_apis x86_64) 생성됨 |
+| JDK | `D:\DevProgram\AndroidStudio\jbr` (OpenJDK 25) | `flutter config --jdk-dir` 로 지정 |
+| Gradle 캐시 | `D:\DevProgram\gradle` | `GRADLE_USER_HOME` |
+| Visual Studio 2026 18.10 | `D:\UnityHub\VisualStudio` | C++ 데스크톱 워크로드 추가 완료, `flutter doctor` 통과 |
+| conda 환경 `philo-rag` (Python 3.11.16) | `D:\DevProgram\conda-envs\philo-rag` | **`C:\Users\USER\anaconda3\envs\philo-rag` 에 정션**을 걸어 `.vscode/` 의 인터프리터 경로가 두 PC 에서 같다 |
+| PyTorch | 2.14.0**+cpu** | 이 PC 는 **GPU 없음** (i5-10210U, 내장 그래픽, RAM 20GB). `pip install torch --index-url https://download.pytorch.org/whl/cpu` |
+| BGE-M3 모델 캐시 | `D:\DevProgram\huggingface` | `HF_HOME` 사용자 환경변수 |
+
+- 이 PC 는 `flutter doctor` 전 항목 통과 (2026-09-21). Windows Hypervisor Platform 켬, Android Studio SDK 경로 확인 완료 (사용자).
+- **PC 별 차이는 전부 저장소 밖에 둔다 — 커밋되는 파일은 두 PC 에서 동일하다.** 차이가 사는 곳은 세 군데뿐이다:
+  ① `backend/.env` (gitignore) ② 사용자 환경변수·`flutter config` ③ conda 환경의 내용물(torch 빌드).
+  이 PC 의 `.env` 는 **`EMBEDDING_DEVICE=cpu` / `EMBEDDING_DTYPE=float32`**, 집 PC 는 `cuda` / `float16`. 나머지 값은 같다.
+  새 경로·장치 설정이 필요해지면 코드에 넣지 말고 `.env` 항목으로 만들 것 (`.env.example` 에는 집 PC 기준 기본값 + 주석).
+- 인덱스는 집 PC 에서 만든 `backend/data/index/` 를 복사해 왔다 (gitignore 라 git 으로 안 넘어온다. 코퍼스가 바뀌어 집에서 다시 빌드하면 또 복사).
+  GPU fp16 으로 만든 인덱스를 CPU fp32 로 질의해도 **점수가 9.2 의 기록과 소수 셋째 자리까지 같다** (마 28:1~17 0.466, 마 6:17~31 0.462).
+  이 CPU 로 인덱스를 새로 빌드하는 것은 피한다 (1,878 청크, 시간 단위).
+- 로컬 LLM(Ollama)은 이 PC 에서 쓰지 않는다. 프리셋 4(OpenAI) 그대로.
+- **`scripts/start_backend.bat` — 백엔드가 꺼져 있을 때만 최소화 창으로 띄운다** (8000 포트가 열려 있으면 아무것도 안 함, 몇 번 불러도 안전).
+  파이썬 경로가 두 PC 에서 같아(위 정션) 커밋해 둔다. Android Studio 에서는 External Tool "Start backend" 로 등록하고
+  Flutter 실행 구성 **`main.dart + backend`** 의 Before launch 에 걸어 두었다 — ▷ 한 번에 서버와 앱이 같이 뜬다.
+  이 두 설정은 저장소 밖(`AndroidStudio-data\config\tools\External Tools.xml`)과 gitignore 된 `mobile/.idea/runConfigurations/` 에 있어
+  **PC 마다 따로 만들어야 한다.** GUI 로는 Run > Edit Configurations > Before launch > + > Run External tool.
+- **IDE 를 켜 둔 채 사용자 환경변수를 새로 만들면 그 IDE 와 자식 프로세스는 값을 못 받는다.** 2026-09-21 에 `HF_HOME` 을 만든 뒤
+  기존 VS Code 세션에서 서버를 띄웠더니 BGE-M3 2.2GB 를 C 의 기본 캐시에 다시 받았다 (기동 108초. 캐시가 맞으면 18초).
+  `start_backend.bat` 은 그래서 `HF_HOME` 이 없으면 레지스트리(`HKCU\Environment`)에서 직접 읽고, 모델이 캐시에 있으면 `HF_HUB_OFFLINE=1` 을 건다.
+- 원래 C 에 있던 SDK(2021년 잔재 포함 9.5GB)를 통째로 옮겼으므로 `platforms\android-24~31`, `system-images\android-22/24/30`,
+  `tools`, `patcher` 는 안 쓰는 옛 패키지다. 지워도 된다.
 
 - Flutter SDK는 저장소 **바깥**(`C:\dev\flutter`)에 둔다. 저장소 안에 넣으면 SDK 자체가 git 저장소라 중첩 문제가 생긴다.
 - `flutter doctor` 의 **Visual Studio `[!]`** 는 Windows 데스크톱 빌드용 컴포넌트가 빠져 있다는 뜻이다. Android 앱을 먼저 만들고
@@ -871,11 +906,19 @@ backend/app/
 ├─ rag.py         안전 판단(정규식 -> LLM) -> 검색 -> 프롬프트 조립 -> LLM 호출 -> 규칙 검사 -> (위반 시) 재생성
 ├─ guard.py       답변이 페르소나 규칙을 지켰는지 검사 (6.13). 검사만 하고 고치지는 않는다
 ├─ glossary.py    답변 속 경전 용어·호칭의 뜻을 각주용으로 뽑는다 (6.20). 고정 표, LLM 안 씀
+├─ works.py       작품명 한글 표기 고정 표 (2026-09-22). "THE GOSPEL ACCORDING TO MATTHEW" -> "마태복음"
 └─ main.py        FastAPI. GET /health, GET /personas, POST /ask
 ```
 
 - `POST /ask` 는 `{persona, question}` 만 받는다. 앱이 보내는 것은 이게 전부다
 - 응답은 `{answer, grounded, sources[]}`. `grounded=false` 면 근거 구절을 못 찾았다는 뜻
+- **`sources[]` 에는 위치 외에 `work_ko`(작품명 한글)와 `chunk_id` 가 실린다. 본문은 보내지 않는다 (2026-09-22).**
+  앱의 근거 목록은 "마태복음 3:1~3:15" 처럼 **한글 작품명 + 위치**로 보인다. `works.py` 의 고정 표이며 LLM 을 쓰지 않는다.
+  코퍼스에 작품을 더하면 표도 늘릴 것 — `tests/test_sources.py` 가 인덱스의 모든 작품이 표에 있는지 검사한다.
+  **구절 본문은 앱에 보내지도, 번역하지도 않는다** (사용자 결정 2026-09-22, 세 번 바로잡음). 한때 LLM 본문 번역(`text_ko`)과
+  줄을 누르면 영어 원문이 펼쳐지는 것을 만들었다가 "필요한 것은 출처 이름의 한글 표기뿐"이라는 지적으로 걷어냈다.
+  본문 번역은 질문당 답변 비용의 5~7배가 들어 되살릴 이유도 없다. **요청 범위 밖의 기능을 덧붙이지 말 것.**
+  검증은 `backend/tests/test_sources.py` (가짜 LLM, API 호출 없음. `python -m pytest tests -q`, 임베딩 로딩 포함 약 1분)
 - **모델은 서버 기동 시 미리 로딩한다.** 첫 요청에서 2GB 를 올리면 그 요청만 수십 초 걸린다
 - `MIN_SCORE` 미만의 구절은 버린다. 근거가 하나도 없으면 지어내지 말라는 별도 프롬프트로 간다
 - 인덱스를 만든 임베딩 모델과 설정이 다르면 **서버가 에러를 낸다.** 벡터 공간이 달라 검색이 무의미해지기 때문
@@ -1151,6 +1194,10 @@ mobile/lib/
 - `state/settings.dart` — `SettingsStore`: 서버 주소를 SharedPreferences 에 저장. 기본값은 플랫폼별 (Android `10.0.2.2`, 그 외 `localhost`)
 - `state/chat.dart` — `ChatController`: 페르소나별 메시지 목록, `send()`, `isPending()`. 서버가 stateless 라 이력은 표시용이다
 - `ui/placeholder_home.dart` — **임시 화면**. Codex 가 만들 정식 UI 로 교체. api/·state/ 사용 예시 역할
+- `ui/source_tile.dart` — 근거 구절 목록 위젯 (2026-09-22, 사용자 요청으로 Claude 가 작성). `SourcesSection` 은
+  **"근거 구절 N개" 한 줄만 보이고 기본은 접힘**, 누르면 "1. 마태복음 3:1~3:15" (한글 작품명 + 위치) 목록이 펼쳐진다.
+  **각 줄은 누를 수 없고 본문도 보여주지 않는다** (사용자 결정). 서버 호출 없음. Codex 가 정식 UI 를 만들 때 그대로 쓰거나 디자인만 바꾸면 된다.
+  `ExpansionTile` 에 `PageStorageKey` 를 주면 안 된다 — 안쪽에 스크롤 위젯이 있으면 저장 슬롯이 겹쳐 형 오류가 난다 (위젯 테스트로 재현했었다)
 - 패키지: `http`, `shared_preferences`. 상태 관리 패키지(provider/riverpod)는 안 썼다 — `ChangeNotifier` + `AnimatedBuilder` 로 충분한 규모.
   Codex 가 UI 를 만들 때 원하면 그때 붙인다
 

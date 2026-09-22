@@ -49,7 +49,9 @@ class AskRequest(BaseModel):
 
 
 class Source(BaseModel):
-    work: str
+    chunk_id: str              # 인덱스 청크 키 (예: "jesus#12")
+    work: str                  # 작품명 영어 (코퍼스 표기)
+    work_ko: str               # 작품명 한글 ("마태복음"). 앱의 근거 목록에 이걸 보여준다 (works.py)
     ref: str
     title: str | None = None
     score: float

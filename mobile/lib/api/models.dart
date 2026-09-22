@@ -23,22 +23,31 @@ class Persona {
       );
 }
 
-/// 답변의 근거 구절. 본문은 오지 않고 위치만 온다.
+/// 답변의 근거 구절. 위치(한글 작품명 포함)만 온다. 본문은 오지 않는다.
 class Source {
-  final String work; // "THE DHAMMAPADA" 같은 작품명 (영어)
+  final String chunkId; // 서버 인덱스의 청크 키 (예: "jesus#12"). 디버그·대조용
+  final String work; // 작품명 영어 (코퍼스 표기, "THE DHAMMAPADA")
+  final String workKo; // 작품명 한글 ("법구경"). 목록에는 이걸 보여준다
   final String ref; // "17:221~17:234" 또는 "1:1"
-  final String? title; // 구분(장·경) 제목
+  final String? title; // 구분(장·경) 제목 (영어, 비어 있을 수 있음)
   final double score; // 코사인 유사도 0~1
 
   const Source({
+    required this.chunkId,
     required this.work,
+    required this.workKo,
     required this.ref,
     required this.title,
     required this.score,
   });
 
+  /// 화면에 보일 위치 표기. 예: "마태복음 6:17~6:31"
+  String get label => '$workKo $ref';
+
   factory Source.fromJson(Map<String, dynamic> j) => Source(
+        chunkId: j['chunk_id'] as String? ?? '',
         work: j['work'] as String,
+        workKo: j['work_ko'] as String? ?? j['work'] as String,
         ref: j['ref'] as String,
         title: j['title'] as String?,
         score: (j['score'] as num).toDouble(),

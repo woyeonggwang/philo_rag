@@ -4,7 +4,7 @@ import re
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from . import glossary, guard, personas, retriever
+from . import glossary, guard, personas, retriever, works
 from .config import get_settings
 
 log = logging.getLogger(__name__)
@@ -106,8 +106,7 @@ def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
                 PASSAGE_TEMPLATE.format(
                     n=i,
                     work=h["work"],
-                    ref=h["ref_start"] if h["ref_end"] == h["ref_start"]
-                        else f"{h['ref_start']}~{h['ref_end']}",
+                    ref=retriever.ref_label(h),
                     title=h["division_title"] or f"{h['division']}장",
                     text=h["text"])
                 for i, h in enumerate(kept, 1))
@@ -115,6 +114,35 @@ def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
         else:
             user = NO_CONTEXT.format(question=question)
 
+    answer_text, retries = _generate(persona_key, persona, user, kept, safety, s)
+
+    if safety:
+        answer_text = SAFETY_NOTICE + "\n\n" + answer_text
+
+    return {
+        "persona": persona_key,
+        "persona_name": persona.name,
+        "question": question,
+        "answer": answer_text,
+        "safety": safety,
+        "grounded": bool(kept),
+        "retries": retries,
+        # 답변에 나온 경전 용어·호칭의 뜻. 앱이 각주로 보여준다 (glossary.py)
+        "glossary": glossary.extract(persona_key, answer_text),
+        # 앱은 work_ko + ref 로 "마태복음 3:1~3:15" 처럼 보여준다 (works.py). 본문은 보내지 않는다
+        "sources": [{
+            "chunk_id": h["chunk_id"],
+            "work": h["work"],
+            "work_ko": works.work_ko(h["work"]),
+            "ref": retriever.ref_label(h),
+            "title": h["division_title"] or None,
+            "score": h["score"],
+        } for h in kept],
+    }
+
+
+def _generate(persona_key, persona, user, kept, safety, s) -> tuple[str, int]:
+    """LLM 호출 + 규칙 검사 + 재생성. (답변 본문, 재생성 횟수)."""
     # 규칙 위반이면 무엇을 어겼는지 알려 주고 다시 쓰게 한다 (CLAUDE.md 6.13).
     messages = [SystemMessage(content=persona.system), HumanMessage(content=user)]
     retries = 0
@@ -131,25 +159,4 @@ def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
         retries += 1
         messages += [AIMessage(content=answer_text),
                      HumanMessage(content=guard.retry_message(violations))]
-
-    if safety:
-        answer_text = SAFETY_NOTICE + "\n\n" + answer_text
-
-    return {
-        "persona": persona_key,
-        "persona_name": persona.name,
-        "question": question,
-        "answer": answer_text,
-        "safety": safety,
-        "grounded": bool(kept),
-        "retries": retries,
-        # 답변에 나온 경전 용어·호칭의 뜻. 앱이 각주로 보여준다 (glossary.py)
-        "glossary": glossary.extract(persona_key, answer_text),
-        "sources": [{
-            "work": h["work"],
-            "ref": h["ref_start"] if h["ref_end"] == h["ref_start"]
-                   else f"{h['ref_start']}~{h['ref_end']}",
-            "title": h["division_title"] or None,
-            "score": h["score"],
-        } for h in kept],
-    }
+    return answer_text, retries
