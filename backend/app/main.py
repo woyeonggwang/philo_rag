@@ -29,7 +29,8 @@ async def lifespan(app: FastAPI):
     # 첫 요청에서 2GB 모델을 로딩하면 그 요청만 수십 초 걸린다. 기동 때 미리 올린다.
     log.info("모델과 인덱스를 미리 로딩합니다...")
     retriever.warmup([p.key for p in personas.listed() if p.enabled])
-    log.info("준비 완료")
+    # uvicorn 은 "http://0.0.0.0:8000" 을 찍는데, 0.0.0.0 은 바인드 주소라 브라우저로 열 수 없다 (ERR_ADDRESS_INVALID)
+    log.info("준비 완료 — 문서: http://localhost:8000/docs")
     yield
 
 

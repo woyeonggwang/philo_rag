@@ -420,6 +420,9 @@ Gemini 응답이 `[{"type": "text", "text": ..., "extras": {"signature": ...}}]`
 - **`Errno 10048 ... bind on address 8000`** 은 서버가 이미 떠 있다는 뜻이지 실패가 아니다. Ctrl+Shift+B 로 띄운 게
   살아 있는 상태에서 F5 를 또 누르면 이렇게 된다. 하나만 띄울 것. 원격 작업 중이라 Ctrl+C 를 못 치면
   터미널 패널의 휴지통 아이콘(터미널 종료) 또는 위 `taskkill` 로 끈다
+- **브라우저로 `http://0.0.0.0:8000` 을 열면 `ERR_ADDRESS_INVALID`** 다. 서버 실패가 아니다. 0.0.0.0 은 "모든 네트워크에서 받는다"는
+  바인드 주소라 접속 주소로 쓸 수 없다 (크롬 계열이 차단). uvicorn 로그의 그 링크를 누르지 말고 `http://localhost:8000/docs` 를 연다.
+  기동 로그 "준비 완료" 줄에 올바른 링크를 찍게 했다 (2026-09-30). `--host 0.0.0.0` 자체는 실기기 접속에 필요하므로 유지
 - 집 PC LAN IP `192.168.0.10`. 노트북·실기기에서 붙으려면 방화벽 인바운드 8000 허용이 필요하다 (관리자 PowerShell):
   `New-NetFirewallRule -DisplayName "philo-rag backend 8000" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow`
 
