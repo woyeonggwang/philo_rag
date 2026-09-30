@@ -70,6 +70,12 @@ philo_rag/
   Flutter 실행 구성 **`main.dart + backend`** 의 Before launch 에 걸어 두었다 — ▷ 한 번에 서버와 앱이 같이 뜬다.
   이 두 설정은 저장소 밖(`AndroidStudio-data\config\tools\External Tools.xml`)과 gitignore 된 `mobile/.idea/runConfigurations/` 에 있어
   **PC 마다 따로 만들어야 한다.** GUI 로는 Run > Edit Configurations > Before launch > + > Run External tool.
+  **집 PC 에도 만들었다 (2026-09-30).** 집 PC Android Studio 에는 **Flutter·Dart 플러그인이 아예 없었다** — 그래서 실행 버튼 옆이
+  "Add Configuration" 이었다. Android Studio 를 닫은 상태에서 `"C:\Program Files\Android\Android Studioin\studio64.exe" installPlugins io.flutter Dart`
+  로 설치했다 (켜져 있으면 "Only one instance" 로 거부). External Tool 은 `%APPDATA%\Google\AndroidStudio2026.1.2	ools\External Tools.xml` 에
+  직접 썼다 (명령은 절대경로 `D:i_project\philo_rag\scripts\start_backend.bat` — 두 PC 모두 같은 경로). 이 파일도 AS 가 꺼져 있을 때 써야 한다.
+  **Android Studio 에서는 저장소 루트가 아니라 `mobile\` 폴더를 연다.** 루트를 열면 Flutter 프로젝트로 인식되지 않는다.
+  서버 기동(모델 로딩)이 20초 안팎이라 첫 실행에 앱이 먼저 뜨면 "연결 실패"가 보일 수 있다 — 임시 화면의 "연결"을 다시 누르면 된다
 - **IDE 를 켜 둔 채 사용자 환경변수를 새로 만들면 그 IDE 와 자식 프로세스는 값을 못 받는다.** 2026-09-21 에 `HF_HOME` 을 만든 뒤
   기존 VS Code 세션에서 서버를 띄웠더니 BGE-M3 2.2GB 를 C 의 기본 캐시에 다시 받았다 (기동 108초. 캐시가 맞으면 18초).
   `start_backend.bat` 은 그래서 `HF_HOME` 이 없으면 레지스트리(`HKCU\Environment`)에서 직접 읽고, 모델이 캐시에 있으면 `HF_HUB_OFFLINE=1` 을 건다.
