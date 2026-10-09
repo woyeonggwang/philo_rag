@@ -1,6 +1,7 @@
 /// 대화 내용을 폰(기기)에 저장한다 (2026-10-10, CLAUDE.md 13절).
 ///
-/// 페르소나마다 JSON 파일 하나: `(앱 전용 폴더)/chats/(persona).json`
+/// 계정마다 폴더, 페르소나마다 JSON 파일 하나: `(앱 전용 폴더)/chats/(계정 uid)/(persona).json`
+/// 한 폰에서 다른 계정으로 로그인하면 그 계정의 대화만 보인다 (2026-10-10 로그인 도입).
 ///   Android  /data/user/0/com.philorag.philo_rag/files/chats/   (다른 앱은 못 읽는다)
 ///   Windows  %APPDATA%\com.philorag\philo_rag\chats\
 /// 앱을 지우면 같이 지워진다. 서버로는 보내지 않는다 (서버는 여전히 stateless).
@@ -19,10 +20,14 @@ class ChatStorage {
   /// 저장 폴더를 돌려주는 함수. 테스트에서는 임시 폴더를 넣는다.
   final Future<Directory> Function() _dir;
 
-  ChatStorage({Future<Directory> Function()? directory})
+  /// [userKey] 는 로그인한 계정 uid (개발용 우회는 "local"). 파일 이름에 못 쓰는 글자는 '_' 로 바꾼다.
+  ChatStorage({required String userKey, Future<Directory> Function()? directory})
       : _dir = directory ??
-            (() async => Directory(
-                '${(await getApplicationSupportDirectory()).path}${Platform.pathSeparator}chats'));
+            (() async => Directory([
+                  (await getApplicationSupportDirectory()).path,
+                  'chats',
+                  userKey.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_'),
+                ].join(Platform.pathSeparator)));
 
   Future<File> _file(String persona) async {
     final d = await _dir();

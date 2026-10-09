@@ -17,6 +17,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class SettingsStore extends ChangeNotifier {
   static const _keyBaseUrl = 'base_url';
   static const _keyUserId = 'user_id';
+  static const _keyWelcomeSeen = 'welcome_seen';
 
   /// 플랫폼별 기본값. 저장된 값이 없을 때만 쓴다.
   static String get defaultBaseUrl {
@@ -29,6 +30,16 @@ class SettingsStore extends ChangeNotifier {
   String _baseUrl = defaultBaseUrl;
 
   String _userId = '';
+  bool _welcomeSeen = false;
+
+  /// 첫 실행 소개 화면을 이미 봤는지. 한 번 "시작하기"를 누르면 다음부터는 로그인 화면이 바로 뜬다.
+  bool get welcomeSeen => _welcomeSeen;
+
+  Future<void> markWelcomeSeen() async {
+    _welcomeSeen = true;
+    await _prefs?.setBool(_keyWelcomeSeen, true);
+    notifyListeners();
+  }
 
   String get baseUrl => _baseUrl;
 
@@ -40,6 +51,7 @@ class SettingsStore extends ChangeNotifier {
     _prefs = await SharedPreferences.getInstance();
     _baseUrl = _prefs!.getString(_keyBaseUrl) ?? defaultBaseUrl;
     _userId = _prefs!.getString(_keyUserId) ?? '';
+    _welcomeSeen = _prefs!.getBool(_keyWelcomeSeen) ?? false;
     if (_userId.isEmpty) {
       _userId = newUserId();
       await _prefs!.setString(_keyUserId, _userId);

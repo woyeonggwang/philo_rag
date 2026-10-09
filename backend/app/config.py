@@ -64,6 +64,11 @@ class Settings(BaseSettings):
     default_plan: str = "pro"             # personal | pro
     usage_db: Path = BACKEND / "data" / "usage.db"   # 사용자·날짜별 질문 수 (gitignore)
 
+    # 로그인 (auth.py). Firebase 프로젝트 ID 로 앱이 보낸 로그인 토큰을 검증한다
+    firebase_project_id: str = ""
+    # true 면 로그인 토큰 없는 /ask 를 401 로 막는다. Firebase 설정 전·개발 중에는 false (기기 ID 로 센다)
+    auth_required: bool = False
+
     # 서버
     host: str = "0.0.0.0"
     port: int = 8000

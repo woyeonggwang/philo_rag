@@ -4,6 +4,12 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Firebase 로그인: Firebase 콘솔에서 받은 google-services.json 을 이 폴더(android/app/)에 넣으면 적용된다 (CLAUDE.md 13절).
+// 파일이 없으면 로그인만 꺼진 채로 빌드된다 — 앱은 "Firebase 설정 전" 안내와 개발용 우회(디버그)로 뜬다.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.philorag.philo_rag"
     compileSdk = flutter.compileSdkVersion

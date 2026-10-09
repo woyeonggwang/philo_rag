@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from . import personas, plans, rag, retriever
+from . import auth, personas, plans, rag, retriever
 from .config import get_settings
 
 logging.basicConfig(
@@ -112,11 +112,14 @@ def list_personas():
 
 @app.post("/ask", response_model=AskResponse)
 def ask(req: AskRequest,
-        x_user_id: str | None = Header(None, description="앱이 처음 실행될 때 만든 사용자 ID. 없으면 anonymous")):
+        authorization: str | None = Header(None, description="Bearer <Firebase ID 토큰>. 로그인한 앱이 보낸다"),
+        x_user_id: str | None = Header(None, description="기기 ID. 로그인 토큰이 없을 때만 쓴다 (AUTH_REQUIRED=false)")):
     try:
-        user_id = plans.normalize_user_id(x_user_id)
+        user_id = auth.resolve_user(authorization, x_user_id)
     except plans.InvalidUserId as e:
         raise HTTPException(400, str(e))
+    except auth.AuthError as e:
+        raise HTTPException(401, str(e))
 
     # 하루 한도 (plans.py). LLM 을 부르기 전에 1건을 미리 세고, 답을 못 주면 돌려준다
     try:

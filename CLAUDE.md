@@ -917,6 +917,7 @@ backend/app/
 ├─ glossary.py    답변 속 경전 용어·호칭의 뜻을 각주용으로 뽑는다 (6.20). 고정 표, LLM 안 씀
 ├─ works.py       작품명 한글 표기 고정 표 (2026-09-22). "THE GOSPEL ACCORDING TO MATTHEW" -> "마태복음"
 ├─ plans.py       요금제(personal/pro)와 사용자별 하루 사용량 (2026-10-10). 9.7 참조
+├─ auth.py        로그인 토큰(Firebase ID 토큰) 검증 (2026-10-10). 13절 "로그인"
 ├─ static/chat.html  개발용 채팅 테스트 화면 (2026-10-10). GET /chat
 └─ main.py        FastAPI. GET /health, GET /personas, POST /ask, GET /chat
 ```
@@ -962,7 +963,7 @@ backend/app/
 | 항목 | 구현 |
 |---|---|
 | 요금제 결정 | `plans.plan_for(user_id)` 한 곳. 지금은 `.env` 의 `DEFAULT_PLAN` 하나를 모두가 받는다. **기본값 `pro`**. `personal` 로 바꾸면 하루 5건 |
-| 사용자 구분 | 앱이 처음 실행될 때 만든 무작위 UUID 를 SharedPreferences 에 저장하고 **`X-User-Id` 헤더**로 보낸다. 헤더가 없으면 `anonymous` 한 칸(`/docs` 시험용) |
+| 사용자 구분 | **로그인했으면 계정**(`Authorization: Bearer <Firebase ID 토큰>` → `fb_<uid>`, auth.py). 토큰이 없으면 앱이 처음 실행될 때 만든 기기 UUID(**`X-User-Id`**). 둘 다 없으면 `anonymous` 한 칸(`/docs` 시험용). `AUTH_REQUIRED=true` 면 토큰 없는 요청은 401 |
 | 사용량 저장 | `backend/data/usage.db` (SQLite, gitignore). (사용자, 날짜) 별 건수. 서버를 껐다 켜도 남는다. PC 마다 따로 쌓인다 |
 | 하루 경계 | 한국 시간 자정 (고정 +9. `zoneinfo` 는 Windows 에서 `tzdata` 가 따로 필요해 안 썼다) |
 | 세는 시점 | LLM 호출 **전에** 1건을 미리 올린다(`BEGIN IMMEDIATE`) — 동시에 여러 건을 보내도 한도를 못 넘는다. 답을 못 주면(404·500·502 등) `refund` 로 돌려준다 |
@@ -974,7 +975,7 @@ backend/app/
 LLM 은 부르지 않고 고정 문구(`SAFETY_NOTICE`, 109)만 준다. 사용량에도 안 센다. 정규식에 안 걸리는 우회 표현은 그대로 429 다
 (LLM 위기 판단까지 돌리면 한도 초과 요청마다 호출 비용이 든다).
 
-**알려진 한계 — 로그인이 생기면 해결된다**: ① 앱을 지웠다 깔면 새 ID 라 한도가 초기화된다 ② ID 는 앱이 보내는 값을 믿는다
+**알려진 한계 — 로그인(2026-10-10 도입, 13절)을 켜면 해결된다**: ① 앱을 지웠다 깔면 새 ID 라 한도가 초기화된다 ② ID 는 앱이 보내는 값을 믿는다
 (직접 요청을 만들면 아무 ID 나 쓸 수 있다) ③ 여러 기기를 쓰면 기기마다 따로 센다. 로그인을 붙이면 `plan_for` 와 `X-User-Id` 자리만 계정으로 바꾼다.
 
 **검증**: `backend/tests/test_plans.py` 9개 (기본 pro 무제한 / personal 6번째 429 / 사용자별 분리 / 다음 날 초기화 / 실패 환불 /
@@ -1190,8 +1191,12 @@ FastAPI 백엔드 **동작 확인 완료** (9.1절).
 - 개발용 채팅 테스트 화면 `GET /chat` (9.8) — 배포 전 반드시 지울 것
 - 대화 이력 유지 방식 미정 (매 요청 stateless vs 세션)
 - 배포처 미정 — 개발 중엔 로컬, 배포 시 클라우드 이전 예정. 이전 시 GPU 없는 환경의 임베딩 처리 방법 재결정 필요
-- ~~앱 인증·사용량 제한 미설계~~ — 사용량 제한은 2026-10-10 구현 (9.7). **로그인(인증)은 아직 없다** — 사용자 결정으로 보류.
-  요금제 가격·pro 결제 방식(월 구독 / 크레딧)도 미정
+- ~~앱 인증·사용량 제한 미설계~~ — 사용량 제한 9.7, 로그인 13절 (둘 다 2026-10-10). 요금제 가격·pro 결제 방식(월 구독 / 크레딧)은 미정
+- **로그인은 코드만 있고 Firebase 프로젝트가 아직 없다** (사용자 계정으로 만들어야 한다, 13절 "설정 순서"). 그 전까지 앱은 "Firebase 설정 전" 안내 +
+  디버그 빌드의 "로그인 없이 계속(개발용)" 으로 돈다. 설정을 마치면 `.env` `AUTH_REQUIRED=true`
+- **Apple 로그인은 Apple Developer Program(연 $99) 가입이 있어야 켤 수 있다.** iOS 출시 계획이 없어 필수는 아니다 — 가입 전까지 버튼은 오류 문장을 띄운다
+- 로그인 도입 전에 폰에 저장된 대화(`chats/<persona>.json`)는 계정별 폴더로 옮기지 않았다 (시험 데이터라 버림)
+- 이메일 가입은 인증 메일을 보내지 않는다 — 남의 이메일로도 가입된다. 필요하면 `sendEmailVerification` 을 붙일 것
 
 ## 13. Flutter 앱 (2026-09-19 시작)
 
@@ -1271,6 +1276,43 @@ mobile/lib/
   `ExpansionTile` 에 `PageStorageKey` 를 주면 안 된다 — 안쪽에 스크롤 위젯이 있으면 저장 슬롯이 겹쳐 형 오류가 난다 (위젯 테스트로 재현했었다)
 - 패키지: `http`, `shared_preferences`. 상태 관리 패키지(provider/riverpod)는 안 썼다 — `ChangeNotifier` + `AnimatedBuilder` 로 충분한 규모.
   Codex 가 UI 를 만들 때 원하면 그때 붙인다
+
+### 로그인 (2026-10-10)
+
+**사용자 결정**: 구글 · 애플 · 이메일 로그인. 로그인돼 있으면 로그인 화면 없이 바로 넘어간다. 처음 실행 화면도 만든다.
+**구현은 Firebase Authentication** (내 선택 — 세 방식을 무료로 한 번에 지원하고 Flutter·Android 공식 지원. 대안은 Supabase).
+패키지 `firebase_core 4.15`, `firebase_auth 6.7`, `google_sign_in 7.2`. 화면은 기능 확인용이고 디자인은 Codex 몫.
+
+| 파일 | 역할 |
+|---|---|
+| `state/auth.dart` | `AuthController` (상태 unknown/signedOut/signedIn, 로그인·가입·비밀번호 재설정·로그아웃, `idToken()`), `AuthBackend` 인터페이스, `AppUser`, `AuthFailure`(한국어 문장) |
+| `state/firebase_auth_backend.dart` | Firebase 구현. 구글은 `google_sign_in`(Credential Manager) → `signInWithCredential`, 애플은 `signInWithProvider(AppleAuthProvider)`(Android 에서도 웹 창), 이메일은 `signInWithEmailAndPassword`/`createUser…`/`sendPasswordResetEmail`. Firebase 오류 코드 → 한국어 문장. 사용자가 창을 닫은 취소는 오류로 안 보인다 |
+| `ui/auth_gate.dart` | 확인 중 → 로딩 / 로그인됨 → 바로 홈 / 처음 실행 → 소개 → 로그인 / 소개 본 뒤 → 로그인 |
+| `ui/welcome_screen.dart` | 처음 한 번만 보이는 소개 + "시작하기" (`SettingsStore.welcomeSeen`) |
+| `ui/login_screen.dart` | 구글·애플 버튼, 이메일 로그인/가입 전환, 비밀번호 찾기, 오류 문장. **디버그 빌드에만** "로그인 없이 계속(개발용)" |
+| `ui/home_shell.dart` | 로그인한 계정의 홈. 계정마다 `ChatController` 를 새로 만들고 대화를 **계정별 폴더**(`chats/<uid>/`)에 저장. 지금은 임시 화면을 띄운다 |
+| `ui/placeholder_home.dart` | 임시 계정 메뉴(이름 + 로그아웃) 추가 |
+
+- 로그인 유지: Firebase 가 기기에 저장하므로 다시 켜면 `authStateChanges` 가 바로 사용자를 준다 → 로그인 화면을 건너뛴다
+- 서버 연결: `PhiloRagClient(idToken: auth.idToken)` 이 요청마다 `Authorization: Bearer` 를 붙인다 (토큰은 1시간짜리라 SDK 가 알아서 갱신).
+  서버 `auth.py` 가 Google 공개키로 검증 — **서비스 계정 키 불필요, `FIREBASE_PROJECT_ID` 만**. 401 은 `ApiException.isAuthError`
+- **Firebase 설정이 없어도 앱이 켜진다**: `google-services.json` 이 없으면 Gradle 의 google-services 플러그인이 적용되지 않고
+  (`app/build.gradle.kts` 의 조건부 apply), `Firebase.initializeApp()` 실패를 잡아 `available=false` 로 돈다. **기기에서는 아직 확인 안 함** `[확인필요]`
+- `google-services.json` 은 **gitignore** — API 키가 들어 있어 공개 저장소에 안 올린다. `.env` 처럼 두 PC 에 직접 복사
+- 첫 빌드 때 Gradle 이 SDK 에 CMake 3.22.1 을 자동 설치했다 (어느 플러그인이 요구했는지는 미확인)
+- 검증: `mobile/test/auth_flow_test.dart` 6개 (가짜 로그인: 첫 실행 흐름·로그인 유지·세 방식·가입 전환과 비밀번호 검사·오류 문장·설정 전 우회),
+  `backend/tests/test_auth.py` 8개 (정상 토큰 → 계정 기준 집계 / 위조 401 / 헤더 형식 / 미필수 시 기기 ID / 필수 시 401 / 프로젝트 ID 없음 / 다른 프로젝트 / uid 형식)
+
+**설정 순서 (사용자가 Firebase 콘솔에서)**:
+1. console.firebase.google.com → 프로젝트 만들기 (애널리틱스는 꺼도 된다)
+2. Android 앱 추가: 패키지 `com.philorag.philo_rag`, **SHA-1 을 먼저 등록한 뒤** `google-services.json` 을 받는다 (나중에 등록하면 다시 받아야 한다).
+   SHA-1 은 PC 마다 다르다 (디버그 키가 PC 별). 집 PC: `26:22:6F:ED:D3:41:31:3F:3B:8E:E5:80:7E:9D:01:F7:FA:05:76:74`.
+   두 번째 PC 는 `"D:\DevProgram\AndroidStudio\jbrin\keytool.exe" -list -v -keystore %USERPROFILE%\.android\debug.keystore -alias androiddebugkey -storepass android` 로 확인해 추가.
+   출시 때는 Play 앱 서명 키의 SHA-1 도 추가해야 한다
+3. `google-services.json` → 두 PC 의 `mobile/android/app/` 에 복사
+4. Authentication → 로그인 방법: **이메일/비밀번호**, **Google** 사용 설정. **Apple** 은 Apple Developer 의 Services ID·Team ID·Key 가 필요 (유료)
+5. 프로젝트 설정의 **프로젝트 ID** → 두 PC 의 `backend/.env` `FIREBASE_PROJECT_ID=` → 서버 재시작
+6. 앱 다시 빌드. 다 되면 `.env` `AUTH_REQUIRED=true` (로그인 안 한 요청을 막는다)
 
 **Claude Code 와의 연결**: 별도 설정이 없다. 모노레포라 저장소 루트(`D:\ai_project\philo_rag`)에서 연 Claude Code 세션이
 `mobile/` 까지 그대로 다룬다. 이 CLAUDE.md 가 앱 규칙까지 담는다. Codex 도 같은 루트에서 열고 이 파일을 읽게 한다.

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
+import '../state/auth.dart';
 import '../state/chat.dart';
 import '../state/settings.dart';
 import 'source_tile.dart';
@@ -15,7 +16,10 @@ class PlaceholderHome extends StatefulWidget {
   final SettingsStore settings;
   final ChatController chat;
 
-  const PlaceholderHome({super.key, required this.settings, required this.chat});
+  /// 로그인 정보·로그아웃 (임시 메뉴). null 이면 메뉴를 안 그린다.
+  final AuthController? auth;
+
+  const PlaceholderHome({super.key, required this.settings, required this.chat, this.auth});
 
   @override
   State<PlaceholderHome> createState() => _PlaceholderHomeState();
@@ -100,6 +104,19 @@ class _PlaceholderHomeState extends State<PlaceholderHome> {
             icon: const Icon(Icons.delete_outline),
             onPressed: _persona == null ? null : _confirmClear,
           ),
+          // 임시 로그아웃 메뉴 — 정식 UI(Codex)에서 설정 화면 등으로 옮긴다. 기능은 AuthController.signOut()
+          if (widget.auth != null)
+            PopupMenuButton<String>(
+              tooltip: '계정',
+              icon: const Icon(Icons.account_circle_outlined),
+              onSelected: (v) {
+                if (v == 'signout') widget.auth!.signOut();
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(enabled: false, child: Text(widget.auth!.user?.label ?? '')),
+                const PopupMenuItem(value: 'signout', child: Text('로그아웃')),
+              ],
+            ),
         ],
       ),
       body: Column(

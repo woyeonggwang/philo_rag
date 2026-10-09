@@ -48,7 +48,7 @@ void main() {
 
   setUp(() async {
     tmp = await Directory.systemTemp.createTemp('chats_test');
-    storage = ChatStorage(directory: () async => tmp);
+    storage = ChatStorage(userKey: 'test', directory: () async => tmp);
   });
   tearDown(() async => tmp.delete(recursive: true));
 
