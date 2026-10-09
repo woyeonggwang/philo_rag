@@ -119,3 +119,11 @@ def test_unknown_default_plan_fails_loudly(monkeypatch):
     monkeypatch.setattr(get_settings(), "default_plan", "gold")
     with pytest.raises(RuntimeError, match="gold"):
         plans.plan_for("user-a")
+
+
+def test_chat_test_page_is_served(client):
+    """개발용 채팅 테스트 화면 (GET /chat). /ask 를 부르고 X-User-Id 를 보낸다."""
+    r = client.get("/chat")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    assert "철학 RAG 테스트" in r.text and 'fetch("/ask"' in r.text and "X-User-Id" in r.text

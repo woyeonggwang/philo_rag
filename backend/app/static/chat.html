@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>철학 RAG 테스트</title>
+<!--
+  개발용 채팅 테스트 화면 (2026-10-10). 백엔드가 GET /chat 으로 내준다 (main.py).
+  /ask 를 그대로 부르므로 질문 1개 = LLM 호출 1~2회 (비용 발생). 배포 전에 지울 것 (CLAUDE.md 12절).
+  대화는 이 페이지 메모리에만 있다 — 새로고침하면 사라진다.
+-->
+<style>
+  :root {
+    --bg: #f6f4f1; --panel: #ffffff; --text: #1f1d1a; --muted: #6f6a63; --line: #e4dfd8;
+    --me: #e8e1d6; --them: #ffffff; --accent: #8a5a3b; --warn: #b3261e; --warn-bg: #fdecea;
+    --note-bg: #f3efe9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #171614; --panel: #201e1b; --text: #ece8e2; --muted: #a29b91; --line: #34302b;
+      --me: #3a3129; --them: #26231f; --accent: #d39b72; --warn: #ffb4ab; --warn-bg: #3b1d1a;
+      --note-bg: #2b2824;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 16px/1.65 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    display: flex; flex-direction: column;
+  }
+  header {
+    background: var(--panel); border-bottom: 1px solid var(--line);
+    padding: 12px 16px 10px;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; width: 100%; }
+  .top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 18px; margin: 0; }
+  #status { color: var(--muted); font-size: 13px; }
+  .tabs { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .tab {
+    border: 1px solid var(--line); background: transparent; color: var(--text);
+    padding: 6px 16px; border-radius: 999px; font: inherit; cursor: pointer;
+  }
+  .tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #blurb { color: var(--muted); font-size: 13px; margin-top: 6px; min-height: 1.2em; }
+  main { flex: 1; overflow-y: auto; padding: 16px; }
+  #log { display: flex; flex-direction: column; gap: 14px; }
+  .msg { max-width: 86%; padding: 10px 14px; border-radius: 16px; }
+  .me { align-self: flex-end; background: var(--me); border-bottom-right-radius: 4px; white-space: pre-wrap; }
+  .them { align-self: flex-start; background: var(--them); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+  .them.err { background: var(--warn-bg); border-color: var(--warn); color: var(--warn); }
+  .who { font-size: 13px; font-weight: 600; color: var(--accent); margin-bottom: 4px; }
+  .answer { white-space: pre-wrap; }
+  .badge { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px;
+           background: var(--warn-bg); color: var(--warn); margin-left: 6px; font-weight: 500; }
+  details { margin-top: 8px; font-size: 14px; background: var(--note-bg); border-radius: 10px; padding: 6px 10px; }
+  summary { cursor: pointer; color: var(--muted); }
+  details ol, details ul { margin: 6px 0 2px; padding-left: 22px; }
+  .term { font-weight: 600; }
+  .meta { margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .empty { color: var(--muted); text-align: center; margin-top: 40px; }
+  .samples { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 14px; }
+  .sample {
+    border: 1px dashed var(--line); background: var(--panel); color: var(--text);
+    padding: 6px 12px; border-radius: 12px; font: inherit; font-size: 14px; cursor: pointer;
+  }
+  .typing { color: var(--muted); }
+  footer { background: var(--panel); border-top: 1px solid var(--line); padding: 10px 16px; }
+  form { display: flex; gap: 8px; align-items: flex-end; }
+  textarea {
+    flex: 1; resize: none; min-height: 44px; max-height: 160px; padding: 10px 12px;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--text);
+    font: inherit;
+  }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  button.send { background: var(--accent); color: #fff; border: 0; border-radius: 12px;
+                padding: 0 18px; height: 44px; font: inherit; cursor: pointer; }
+  button.send:disabled { opacity: .5; cursor: default; }
+  .tools { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .link { background: none; border: 0; color: var(--muted); font: inherit; cursor: pointer; text-decoration: underline; padding: 0; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="top">
+      <h1>철학 RAG 테스트</h1>
+      <span id="status">서버 확인 중…</span>
+    </div>
+    <div class="tabs" id="tabs" role="tablist"></div>
+    <div id="blurb"></div>
+  </div>
+</header>
+
+<main id="scroller">
+  <div class="wrap" id="log"></div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <form id="form">
+      <textarea id="input" rows="1" placeholder="질문을 입력하세요 (Enter 보내기 · Shift+Enter 줄바꿈)"></textarea>
+      <button class="send" id="send" type="submit">보내기</button>
+    </form>
+    <div class="tools">
+      <span id="usage"></span>
+      <button class="link" id="clear" type="button">이 대화 지우기</button>
+    </div>
+  </div>
+</footer>
+
+<script>
+"use strict";
+
+// 지금까지 시험했던 질문들 (CLAUDE.md 6.19·6.20). 누르면 바로 보낸다.
+const SAMPLES = {
+  nietzsche: ["신은 죽었다는 말은 무슨 뜻입니까?", "동정심은 좋은 것 아닌가요?", "남의 시선이 너무 신경 쓰입니다"],
+  jesus: ["돈 걱정으로 잠이 안 옵니다", "원수를 어떻게 대해야 합니까?", "용서가 잘 안 됩니다"],
+  buddha: ["화가 날 때 어떻게 해야 합니까?", "무엇을 믿어야 할지 모르겠습니다", "자식이 말을 듣지 않습니다"],
+};
+
+const $ = (s) => document.querySelector(s);
+const threads = {};          // persona -> [{role, text, res, error, sec}]
+let personas = [];
+let current = null;
+let pending = false;
+
+// 요금제 한도는 사용자 ID 별로 센다 (backend/app/plans.py). 브라우저마다 하나 만들어 둔다.
+const userId = (() => {
+  const make = () => {
+    const b = crypto.getRandomValues(new Uint8Array(16));
+    b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+    const h = [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  };
+  try {
+    let v = localStorage.getItem("philo_rag_user_id");
+    if (!v) { v = make(); localStorage.setItem("philo_rag_user_id", v); }
+    return v;
+  } catch (e) {
+    return make();
+  }
+})();
+
+function el(tag, attrs, ...children) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") n.className = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v);
+  }
+  for (const c of children) if (c != null) n.append(c);  // 문자열은 텍스트로 들어간다 (HTML 해석 안 함)
+  return n;
+}
+
+function personaName(key) {
+  return (personas.find((p) => p.key === key) || {}).name || key;
+}
+
+function renderTabs() {
+  const tabs = $("#tabs");
+  tabs.replaceChildren(...personas.map((p) =>
+    el("button", { class: "tab", type: "button", role: "tab", "aria-selected": String(p.key === current),
+                   onclick: () => select(p.key) }, p.name)));
+  const p = personas.find((x) => x.key === current);
+  $("#blurb").textContent = p ? p.blurb : "";
+}
+
+function select(key) {
+  current = key;
+  renderTabs();
+  render();
+  $("#input").focus();
+}
+
+function details(summary, items) {
+  return el("details", {}, el("summary", {}, summary), items);
+}
+
+function bubble(m) {
+  if (m.role === "me") return el("div", { class: "msg me" }, m.text);
+  if (m.error) return el("div", { class: "msg them err" }, m.text);
+
+  const r = m.res;
+  const box = el("div", { class: "msg them" },
+    el("div", { class: "who" }, r.persona_name, r.safety ? el("span", { class: "badge" }, "안전 안내 포함") : null),
+    // 문장 끝 공백 두 칸 + 줄바꿈(마크다운 줄바꿈)은 정리해서 보여준다 (CLAUDE.md 12절)
+    el("div", { class: "answer" }, r.answer.replace(/[ \t]+\n/g, "\n").trim()));
+
+  if (r.glossary && r.glossary.length) {
+    box.append(details(`용어 풀이 ${r.glossary.length}개`,
+      el("ul", {}, ...r.glossary.map((g) => el("li", {}, el("span", { class: "term" }, g.term), " — ", g.meaning)))));
+  }
+  if (r.sources && r.sources.length) {
+    box.append(details(`근거 구절 ${r.sources.length}개`,
+      el("ol", {}, ...r.sources.map((s) => el("li", {}, `${s.work_ko || s.work} ${s.ref}`)))));
+  } else if (!r.safety) {
+    box.append(el("div", { class: "meta" }, "근거 구절 없음 — 이 주제는 원전에 없다고 답한 경우입니다"));
+  }
+  const meta = [`${m.sec.toFixed(1)}초`];
+  if (r.retries) meta.push(`말투 규칙 위반으로 ${r.retries}회 다시 씀`);
+  box.append(el("div", { class: "meta" }, meta.join(" · ")));
+  return box;
+}
+
+function render() {
+  const log = $("#log");
+  const msgs = threads[current] || [];
+  if (!msgs.length && pending !== current) {
+    log.replaceChildren(
+      el("div", { class: "empty" }, `${personaName(current)}에게 물어보세요. 예시 질문을 눌러도 됩니다.`),
+      el("div", { class: "samples" }, ...(SAMPLES[current] || []).map((q) =>
+        el("button", { class: "sample", type: "button", onclick: () => send(q) }, q))));
+  } else {
+    log.replaceChildren(...msgs.map(bubble));
+    if (pending === current) {
+      log.append(el("div", { class: "msg them typing", id: "typing" }, `${personaName(current)}가 구절을 찾고 있습니다… `,
+        el("span", { id: "elapsed" }, "0초")));
+    }
+  }
+  $("#send").disabled = !!pending;
+  const s = $("#scroller");
+  s.scrollTop = s.scrollHeight;
+}
+
+function showUsage(u) {
+  if (!u) return;
+  $("#usage").textContent = u.daily_limit == null
+    ? `${u.plan_name} 요금제 · 오늘 ${u.used_today}건 (무제한)`
+    : `${u.plan_name} 요금제 · 오늘 ${u.used_today} / ${u.daily_limit}건`;
+}
+
+async function send(text) {
+  const q = (text || "").trim();
+  if (!q || pending || !current) return;
+  const persona = current;
+  const thread = (threads[persona] = threads[persona] || []);
+  thread.push({ role: "me", text: q });
+  pending = persona;
+  render();
+
+  const t0 = performance.now();
+  const timer = setInterval(() => {
+    const e = document.getElementById("elapsed");
+    if (e) e.textContent = `${Math.round((performance.now() - t0) / 1000)}초`;
+  }, 500);
+
+  try {
+    const res = await fetch("/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-User-Id": userId },
+      body: JSON.stringify({ persona, question: q }),
+    });
+    const body = await res.json().catch(() => ({}));
+    const sec = (performance.now() - t0) / 1000;
+    if (res.ok) {
+      thread.push({ role: "them", res: body, sec });
+      showUsage(body.usage);
+    } else {
+      const d = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail || body);
+      thread.push({ role: "them", error: true, text: res.status === 429 ? d : `오류 ${res.status}: ${d}` });
+    }
+  } catch (e) {
+    thread.push({ role: "them", error: true, text: `서버에 연결하지 못했습니다 (${e.message}). 백엔드가 켜져 있는지 확인하세요.` });
+  } finally {
+    clearInterval(timer);
+    pending = false;
+    render();
+  }
+}
+
+// ── 입력 ──
+const input = $("#input");
+function grow() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 160) + "px"; }
+input.addEventListener("input", grow);
+input.addEventListener("keydown", (e) => {
+  // 한글 조합 중의 Enter 는 글자 확정용이다. 이때 보내면 마지막 글자가 두 번 들어간다
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
+    e.preventDefault();
+    $("#form").requestSubmit();
+  }
+});
+$("#form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const q = input.value;
+  input.value = "";
+  grow();
+  send(q);
+});
+$("#clear").addEventListener("click", () => {
+  if (!current || pending) return;
+  if ((threads[current] || []).length && !confirm(`${personaName(current)}와의 대화를 지울까요?`)) return;
+  threads[current] = [];
+  render();
+});
+
+// ── 시작 ──
+(async () => {
+  try {
+    const [h, ps] = await Promise.all([fetch("/health").then((r) => r.json()), fetch("/personas").then((r) => r.json())]);
+    personas = ps.filter((p) => p.enabled);
+    $("#status").textContent = `연결됨 · ${h.llm_provider} / ${h.llm_model} · 질문 1개마다 LLM 비용이 듭니다`;
+    select(personas.length ? personas[0].key : null);
+  } catch (e) {
+    $("#status").textContent = "서버에 연결하지 못했습니다. 백엔드를 켠 뒤 새로고침하세요.";
+  }
+})();
+</script>
+</body>
+</html>

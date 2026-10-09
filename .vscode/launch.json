@@ -1,6 +1,6 @@
 {
     // F5 (실행 > 디버깅 시작) 로 백엔드를 띄운다. 셸 활성화·환경변수 문제를 전부 우회한다.
-    // 서버가 뜨면 브라우저에 /docs 가 자동으로 열린다.
+    // 서버가 뜨면 브라우저에 채팅 테스트 화면(/chat)이 자동으로 열린다. API 문서는 /docs.
     "version": "0.2.0",
     "configurations": [
         {
@@ -16,7 +16,7 @@
             "justMyCode": true,
             "serverReadyAction": {
                 "pattern": "Uvicorn running on (https?://\\S+)",
-                "uriFormat": "http://localhost:8000/docs",
+                "uriFormat": "http://localhost:8000/chat",
                 "action": "openExternally"
             }
         },
@@ -33,7 +33,7 @@
             "justMyCode": true,
             "serverReadyAction": {
                 "pattern": "Uvicorn running on (https?://\\S+)",
-                "uriFormat": "http://localhost:8000/docs",
+                "uriFormat": "http://localhost:8000/chat",
                 "action": "openExternally"
             }
         }

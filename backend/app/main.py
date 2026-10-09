@@ -10,9 +10,11 @@
 """
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from . import personas, plans, rag, retriever
@@ -33,7 +35,7 @@ async def lifespan(app: FastAPI):
     log.info("요금제: 모든 사용자 %s (하루 %s건) — DEFAULT_PLAN", plan.name,
              plan.daily_limit if plan.daily_limit is not None else "무제한")
     # uvicorn 은 "http://0.0.0.0:8000" 을 찍는데, 0.0.0.0 은 바인드 주소라 브라우저로 열 수 없다 (ERR_ADDRESS_INVALID)
-    log.info("준비 완료 — 문서: http://localhost:8000/docs")
+    log.info("준비 완료 — 채팅 테스트: http://localhost:8000/chat  (API 문서: /docs)")
     yield
 
 
@@ -84,6 +86,16 @@ class AskResponse(BaseModel):
     glossary: list[GlossaryItem] = []   # 답변 속 용어·호칭의 뜻. 각주용 (glossary.py)
     sources: list[Source]
     usage: UsageInfo | None = None      # 요금제와 오늘 사용량 (plans.py)
+
+
+STATIC = Path(__file__).resolve().parent / "static"
+
+
+@app.get("/chat", include_in_schema=False)
+def chat_page():
+    """개발용 채팅 테스트 화면 (static/chat.html). /ask 를 그대로 부르므로 질문마다 LLM 비용이 든다.
+    배포 전에 지울 것 (CLAUDE.md 12절)."""
+    return FileResponse(STATIC / "chat.html", media_type="text/html; charset=utf-8")
 
 
 @app.get("/health")
