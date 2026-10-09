@@ -1235,6 +1235,18 @@ mobile/lib/
   `PhiloRagClient(baseUrl, userId: …)` 가 모든 요청에 `X-User-Id` 를 붙인다. `AskResponse.usage` (`UsageInfo`: `planName`·`usedToday`·
   `dailyLimit`·`remainingToday`·`unlimited`). 한도 초과는 `ApiException.isQuotaExceeded` (429), `toString()` 이 안내 문장 그대로라
   `ChatController` 는 고칠 것 없이 오류 말풍선에 그 문장이 뜬다. "오늘 3/5" 같은 표시는 UI(Codex) 몫 — 마지막 답변의 `response.usage` 를 쓰면 된다
+- **대화 저장 (2026-10-10, 사용자 결정: 페르소나당 200개 / 지우기 기능 + 임시 버튼 / 위기 안내 대화도 저장)**:
+  `state/chat_storage.dart` — 페르소나마다 JSON 파일 하나를 **앱 전용 폴더**(`getApplicationSupportDirectory()/chats/<persona>.json`)에 둔다.
+  Android 는 `/data/user/0/com.philorag.philo_rag/files/chats/`(다른 앱 접근 불가), Windows 는 `%APPDATA%\com.philorag\philo_rag\chats\`.
+  `ChatController` 가 켤 때 `load()`, 질문을 붙인 직후와 답을 받은 뒤 저장한다(답을 기다리다 앱이 꺼져도 질문은 남는다).
+  임시 파일에 쓰고 바꿔치기해 반쯤 쓴 파일이 생기지 않게 했고, 깨진 파일은 그 페르소나만 건너뛴다.
+  200개는 **질문·답을 각각 1개로 센다**(= 질문 100번). 넘으면 가장 오래된 것부터 지운다. 오류 말풍선도 저장된다.
+  `clear(persona)` 는 화면·파일 모두 지운다. 임시 화면 오른쪽 위 휴지통 → 확인 창 → 삭제 (버튼 위치·모양은 Codex 몫).
+  응답 모델에 `toJson()` 을 붙여 저장한 답을 같은 `fromJson()` 으로 되읽는다. 패키지 `path_provider` 추가.
+  앱을 지우면 같이 지워지고, 기기 간에 옮겨지지 않는다 (동기화는 로그인 + 서버 저장이 있어야 한다).
+  **저장은 기억이 아니다** — 서버는 여전히 매 질문을 따로 받는다 (12절 "대화 이력 유지 방식 미정").
+  Android 자동 백업(템플릿 기본값 `allowBackup` 켜짐)에 이 폴더가 포함될 수 있다 `[확인필요]`.
+  검증: `mobile/test/chat_storage_test.dart` 5개 (근거·각주·사용량·위기 안내 왕복 / 200개 / 오류 / 지우기 / 깨진 파일). 기기 실측은 아직
 - `ui/placeholder_home.dart` — **임시 화면**. Codex 가 만들 정식 UI 로 교체. api/·state/ 사용 예시 역할
 - `ui/source_tile.dart` — 근거 구절 목록 위젯 (2026-09-22, 사용자 요청으로 Claude 가 작성). `SourcesSection` 은
   **"근거 구절 N개" 한 줄만 보이고 기본은 접힘**, 누르면 "1. 마태복음 3:1~3:15" (한글 작품명 + 위치) 목록이 펼쳐진다.

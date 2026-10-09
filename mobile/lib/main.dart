@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import 'api/client.dart';
 import 'state/chat.dart';
+import 'state/chat_storage.dart';
 import 'state/settings.dart';
 import 'ui/placeholder_home.dart';
 
@@ -18,7 +19,9 @@ Future<void> main() async {
 
   PhiloRagClient makeClient() =>
       PhiloRagClient(settings.baseUrl, userId: settings.userId);
-  final chat = ChatController(makeClient());
+  // 대화는 폰에 저장된다 (페르소나당 최근 200개). 켤 때 불러온다
+  final chat = ChatController(makeClient(), storage: ChatStorage());
+  await chat.load();
   // 설정에서 서버 주소를 바꾸면 대화 컨트롤러도 새 주소를 쓴다
   settings.addListener(() => chat.client = makeClient());
 

@@ -62,6 +62,24 @@ class _PlaceholderHomeState extends State<PlaceholderHome> {
     }
   }
 
+  Future<void> _confirmClear() async {
+    final p = _persona;
+    if (p == null) return;
+    final name = _personas.where((x) => x.key == p).map((x) => x.name).firstOrNull ?? p;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('$name 와의 대화를 지울까요?'),
+        content: const Text('폰에 저장된 이 대화가 모두 지워지고 되돌릴 수 없습니다.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('지우기')),
+        ],
+      ),
+    );
+    if (ok == true) await widget.chat.clear(p);
+  }
+
   Future<void> _send() async {
     final p = _persona;
     if (p == null) return;
@@ -73,7 +91,17 @@ class _PlaceholderHomeState extends State<PlaceholderHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('철학 RAG (임시 화면)')),
+      appBar: AppBar(
+        title: const Text('철학 RAG (임시 화면)'),
+        actions: [
+          // 임시 버튼 — 정식 UI(Codex)에서 위치·모양을 다시 정한다. 기능은 ChatController.clear()
+          IconButton(
+            tooltip: '이 대화 지우기',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: _persona == null ? null : _confirmClear,
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(

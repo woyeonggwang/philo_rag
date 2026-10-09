@@ -52,6 +52,16 @@ class Source {
         title: j['title'] as String?,
         score: (j['score'] as num).toDouble(),
       );
+
+  /// 서버 응답과 같은 꼴. 폰에 대화를 저장할 때 쓴다 (state/chat_storage.dart)
+  Map<String, dynamic> toJson() => {
+        'chunk_id': chunkId,
+        'work': work,
+        'work_ko': workKo,
+        'ref': ref,
+        'title': title,
+        'score': score,
+      };
 }
 
 /// 답변 속 용어·호칭의 뜻. 각주로 보여준다 (CLAUDE.md 6.20). 지금은 부처만 채워져 있다.
@@ -65,6 +75,8 @@ class GlossaryItem {
         term: j['term'] as String,
         meaning: j['meaning'] as String,
       );
+
+  Map<String, dynamic> toJson() => {'term': term, 'meaning': meaning};
 }
 
 /// 요금제와 오늘 사용량 (backend/app/plans.py). 로그인이 없어 사용자는 기기별 ID 로 구분된다.
@@ -93,6 +105,13 @@ class UsageInfo {
         usedToday: j['used_today'] as int,
         dailyLimit: j['daily_limit'] as int?,
       );
+
+  Map<String, dynamic> toJson() => {
+        'plan': plan,
+        'plan_name': planName,
+        'used_today': usedToday,
+        'daily_limit': dailyLimit,
+      };
 }
 
 class AskResponse {
@@ -146,6 +165,20 @@ class AskResponse {
             ? null
             : UsageInfo.fromJson(j['usage'] as Map<String, dynamic>),
       );
+
+  /// 서버 응답과 같은 꼴 — 저장한 것을 fromJson 으로 그대로 되읽는다
+  Map<String, dynamic> toJson() => {
+        'persona': persona,
+        'persona_name': personaName,
+        'question': question,
+        'answer': answer,
+        'grounded': grounded,
+        'safety': safety,
+        'retries': retries,
+        'glossary': glossary.map((g) => g.toJson()).toList(),
+        'sources': sources.map((s) => s.toJson()).toList(),
+        'usage': usage?.toJson(),
+      };
 }
 
 class HealthResponse {
