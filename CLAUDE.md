@@ -3,7 +3,7 @@
 철학자 페르소나(예수 / 니체 / 부처)로 답하는 RAG 챗봇 + Android 앱.
 이 문서는 **확인된 사실만** 기록한다. 미확인 항목은 `[확인필요]`로 표시한다.
 
-최종 갱신: 2026-09-22
+최종 갱신: 2026-10-10
 
 ---
 
@@ -916,6 +916,7 @@ backend/app/
 ├─ guard.py       답변이 페르소나 규칙을 지켰는지 검사 (6.13). 검사만 하고 고치지는 않는다
 ├─ glossary.py    답변 속 경전 용어·호칭의 뜻을 각주용으로 뽑는다 (6.20). 고정 표, LLM 안 씀
 ├─ works.py       작품명 한글 표기 고정 표 (2026-09-22). "THE GOSPEL ACCORDING TO MATTHEW" -> "마태복음"
+├─ plans.py       요금제(personal/pro)와 사용자별 하루 사용량 (2026-10-10). 9.7 참조
 └─ main.py        FastAPI. GET /health, GET /personas, POST /ask
 ```
 
@@ -936,6 +937,33 @@ backend/app/
 - 실제 인덱스 규모 (BGE-M3 토크나이저, 2026-09-19): nietzsche **1,124 청크 / 470,565 토큰** (최대 640),
   jesus **213 청크 / 89,981 토큰** (최대 512), buddha **541 청크 / 186,502 토큰** (최대 645 — 대반열반경 긴 문단, 문장 경계 분할의 초과분).
   설정은 512/640/96 그대로
+
+### 9.7 요금제와 하루 한도 (2026-10-10)
+
+**사용자 결정**: 요금제는 `personal`(하루 5건)·`pro`(무제한) 둘. **가격과 pro 결제 방식(월 구독 / 크레딧)은 미정**이라 코드에 넣지 않았다.
+**제한 기능만 만들고 로그인 시스템은 도입하지 않는다.** 테스트 단계이므로 **모두 pro 로 무제한 시험**할 수 있게 둔다.
+
+| 항목 | 구현 |
+|---|---|
+| 요금제 결정 | `plans.plan_for(user_id)` 한 곳. 지금은 `.env` 의 `DEFAULT_PLAN` 하나를 모두가 받는다. **기본값 `pro`**. `personal` 로 바꾸면 하루 5건 |
+| 사용자 구분 | 앱이 처음 실행될 때 만든 무작위 UUID 를 SharedPreferences 에 저장하고 **`X-User-Id` 헤더**로 보낸다. 헤더가 없으면 `anonymous` 한 칸(`/docs` 시험용) |
+| 사용량 저장 | `backend/data/usage.db` (SQLite, gitignore). (사용자, 날짜) 별 건수. 서버를 껐다 켜도 남는다. PC 마다 따로 쌓인다 |
+| 하루 경계 | 한국 시간 자정 (고정 +9. `zoneinfo` 는 Windows 에서 `tzdata` 가 따로 필요해 안 썼다) |
+| 세는 시점 | LLM 호출 **전에** 1건을 미리 올린다(`BEGIN IMMEDIATE`) — 동시에 여러 건을 보내도 한도를 못 넘는다. 답을 못 주면(404·500·502 등) `refund` 로 돌려준다 |
+| 한도 초과 | **429** + "오늘 사용할 수 있는 질문 5건을 모두 썼습니다 (Personal 요금제). 한국 시간 자정에 다시 채워집니다." 앱은 `ApiException.isQuotaExceeded` 로 구분하고 이 문장을 그대로 보여준다 |
+| 응답 | `/ask` 응답에 `usage: {plan, plan_name, used_today, daily_limit}` 가 붙는다. pro 도 횟수는 센다 (`daily_limit: null`) |
+
+**한도에 걸려도 위기 신호가 명백하면 상담전화 안내는 나간다** (내 판단으로 넣음 — 빼려면 `main.py` 의 `rag.safety_only` 분기만 지우면 된다).
+"하루 5건을 다 썼다"는 이유로 "죽고 싶다"에 429 를 돌려주면 안 된다고 봤다. 정규식(`SAFETY_PATTERNS`)에 걸릴 때만이며,
+LLM 은 부르지 않고 고정 문구(`SAFETY_NOTICE`, 109)만 준다. 사용량에도 안 센다. 정규식에 안 걸리는 우회 표현은 그대로 429 다
+(LLM 위기 판단까지 돌리면 한도 초과 요청마다 호출 비용이 든다).
+
+**알려진 한계 — 로그인이 생기면 해결된다**: ① 앱을 지웠다 깔면 새 ID 라 한도가 초기화된다 ② ID 는 앱이 보내는 값을 믿는다
+(직접 요청을 만들면 아무 ID 나 쓸 수 있다) ③ 여러 기기를 쓰면 기기마다 따로 센다. 로그인을 붙이면 `plan_for` 와 `X-User-Id` 자리만 계정으로 바꾼다.
+
+**검증**: `backend/tests/test_plans.py` 9개 (기본 pro 무제한 / personal 6번째 429 / 사용자별 분리 / 다음 날 초기화 / 실패 환불 /
+한도 초과 중 위기 문장 / 헤더 없음 / 잘못된 ID 400 / 없는 요금제 이름). LLM·임베딩 없이 8초. `tests/conftest.py` 가 사용량 DB 를 임시 파일로 돌린다.
+앱은 `mobile/test/plan_client_test.dart` 5개 (헤더 전송·usage 해석·옛 서버 호환·429·ID 형식). `pytest` 를 `requirements.txt` 에 넣었다 (집 PC 엔 없었다).
 
 ### 9.1 첫 호출 결과 (2026-09-16, gemini-3.6-flash)
 
@@ -1145,7 +1173,8 @@ FastAPI 백엔드 **동작 확인 완료** (9.1절).
 - CORS 가 `allow_origins=["*"]` 로 열려 있다. 배포 전 반드시 좁힐 것
 - 대화 이력 유지 방식 미정 (매 요청 stateless vs 세션)
 - 배포처 미정 — 개발 중엔 로컬, 배포 시 클라우드 이전 예정. 이전 시 GPU 없는 환경의 임베딩 처리 방법 재결정 필요
-- 앱 인증·사용량 제한 미설계
+- ~~앱 인증·사용량 제한 미설계~~ — 사용량 제한은 2026-10-10 구현 (9.7). **로그인(인증)은 아직 없다** — 사용자 결정으로 보류.
+  요금제 가격·pro 결제 방식(월 구독 / 크레딧)도 미정
 
 ## 13. Flutter 앱 (2026-09-19 시작)
 
@@ -1202,6 +1231,10 @@ mobile/lib/
   `ask` 타임아웃 90초 (LLM 10~35초 + 재생성)
 - `state/settings.dart` — `SettingsStore`: 서버 주소를 SharedPreferences 에 저장. 기본값은 플랫폼별 (Android `10.0.2.2`, 그 외 `localhost`)
 - `state/chat.dart` — `ChatController`: 페르소나별 메시지 목록, `send()`, `isPending()`. 서버가 stateless 라 이력은 표시용이다
+- **요금제 (2026-10-10, 9.7)**: `SettingsStore.userId` — 첫 실행 때 UUID v4 를 만들어 저장(패키지 없이 직접 생성).
+  `PhiloRagClient(baseUrl, userId: …)` 가 모든 요청에 `X-User-Id` 를 붙인다. `AskResponse.usage` (`UsageInfo`: `planName`·`usedToday`·
+  `dailyLimit`·`remainingToday`·`unlimited`). 한도 초과는 `ApiException.isQuotaExceeded` (429), `toString()` 이 안내 문장 그대로라
+  `ChatController` 는 고칠 것 없이 오류 말풍선에 그 문장이 뜬다. "오늘 3/5" 같은 표시는 UI(Codex) 몫 — 마지막 답변의 `response.usage` 를 쓰면 된다
 - `ui/placeholder_home.dart` — **임시 화면**. Codex 가 만들 정식 UI 로 교체. api/·state/ 사용 예시 역할
 - `ui/source_tile.dart` — 근거 구절 목록 위젯 (2026-09-22, 사용자 요청으로 Claude 가 작성). `SourcesSection` 은
   **"근거 구절 N개" 한 줄만 보이고 기본은 접힘**, 누르면 "1. 마태복음 3:1~3:15" (한글 작품명 + 위치) 목록이 펼쳐진다.

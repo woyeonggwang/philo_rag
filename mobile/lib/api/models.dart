@@ -67,6 +67,34 @@ class GlossaryItem {
       );
 }
 
+/// 요금제와 오늘 사용량 (backend/app/plans.py). 로그인이 없어 사용자는 기기별 ID 로 구분된다.
+class UsageInfo {
+  final String plan; // "personal" | "pro"
+  final String planName; // 화면 표시용 ("Personal")
+  final int usedToday; // 오늘 쓴 질문 수 (이번 질문 포함)
+  final int? dailyLimit; // null 이면 무제한
+
+  const UsageInfo({
+    required this.plan,
+    required this.planName,
+    required this.usedToday,
+    required this.dailyLimit,
+  });
+
+  bool get unlimited => dailyLimit == null;
+
+  /// 오늘 남은 질문 수. 무제한이면 null.
+  int? get remainingToday =>
+      dailyLimit == null ? null : (dailyLimit! - usedToday).clamp(0, dailyLimit!);
+
+  factory UsageInfo.fromJson(Map<String, dynamic> j) => UsageInfo(
+        plan: j['plan'] as String,
+        planName: j['plan_name'] as String? ?? j['plan'] as String,
+        usedToday: j['used_today'] as int,
+        dailyLimit: j['daily_limit'] as int?,
+      );
+}
+
 class AskResponse {
   final String persona;
   final String personaName;
@@ -84,6 +112,9 @@ class AskResponse {
   final List<GlossaryItem> glossary;
   final List<Source> sources;
 
+  /// 요금제·오늘 사용량. 옛 서버는 보내지 않으므로 null 일 수 있다.
+  final UsageInfo? usage;
+
   const AskResponse({
     required this.persona,
     required this.personaName,
@@ -94,6 +125,7 @@ class AskResponse {
     required this.retries,
     required this.glossary,
     required this.sources,
+    this.usage,
   });
 
   factory AskResponse.fromJson(Map<String, dynamic> j) => AskResponse(
@@ -110,6 +142,9 @@ class AskResponse {
         sources: (j['sources'] as List<dynamic>? ?? const [])
             .map((e) => Source.fromJson(e as Map<String, dynamic>))
             .toList(),
+        usage: j['usage'] == null
+            ? null
+            : UsageInfo.fromJson(j['usage'] as Map<String, dynamic>),
       );
 }
 

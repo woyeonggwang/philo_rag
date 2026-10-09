@@ -17,6 +17,8 @@ env/
 
 # 재생성 가능한 산출물
 backend/data/index/
+# 사용자·날짜별 질문 수 (plans.py). PC 마다 따로 쌓인다
+backend/data/usage.db*
 *.faiss
 *.index
 *.pkl

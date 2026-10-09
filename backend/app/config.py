@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     top_k: int = 5
     min_score: float = 0.45               # 이보다 낮으면 근거 없음으로 본다 (2026-09-16 실측: 관련 0.49+, 무관 0.40-)
 
+    # 요금제 (plans.py). 로그인이 없어 모든 사용자가 이 요금제를 받는다.
+    # 테스트 단계라 pro(무제한). personal 로 바꾸면 하루 5건 제한이 걸린다
+    default_plan: str = "pro"             # personal | pro
+    usage_db: Path = BACKEND / "data" / "usage.db"   # 사용자·날짜별 질문 수 (gitignore)
+
     # 서버
     host: str = "0.0.0.0"
     port: int = 8000
@@ -69,4 +74,6 @@ def get_settings() -> Settings:
     s = Settings()
     if not s.index_dir.is_absolute():
         s.index_dir = BACKEND / s.index_dir
+    if not s.usage_db.is_absolute():
+        s.usage_db = BACKEND / s.usage_db
     return s

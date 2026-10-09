@@ -16,9 +16,11 @@ Future<void> main() async {
   final settings = SettingsStore();
   await settings.load();
 
-  final chat = ChatController(PhiloRagClient(settings.baseUrl));
+  PhiloRagClient makeClient() =>
+      PhiloRagClient(settings.baseUrl, userId: settings.userId);
+  final chat = ChatController(makeClient());
   // 설정에서 서버 주소를 바꾸면 대화 컨트롤러도 새 주소를 쓴다
-  settings.addListener(() => chat.client = PhiloRagClient(settings.baseUrl));
+  settings.addListener(() => chat.client = makeClient());
 
   runApp(PhiloRagApp(settings: settings, chat: chat));
 }

@@ -85,6 +85,26 @@ def _invoke(persona_key, messages, s) -> str:
     return text
 
 
+def safety_only(persona_key: str, question: str) -> dict | None:
+    """하루 한도에 걸린 요청이라도 위기 신호가 명백하면(정규식) 상담전화 안내는 준다.
+    LLM 을 부르지 않는 고정 문구뿐이라 비용이 없고, 사용량에도 세지 않는다 (plans.py, main.py).
+    정규식에 안 걸리면 None — 한도 초과로 처리된다 (LLM 위기 판단은 호출 비용이 들어 하지 않는다)."""
+    if not SAFETY_PATTERNS.search(question):
+        return None
+    persona = personas.get(persona_key)
+    return {
+        "persona": persona_key,
+        "persona_name": persona.name,
+        "question": question,
+        "answer": SAFETY_NOTICE,
+        "safety": True,
+        "grounded": False,
+        "retries": 0,
+        "glossary": [],
+        "sources": [],
+    }
+
+
 def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
     s = get_settings()
     persona = personas.get(persona_key)

@@ -20,6 +20,9 @@ faiss-cpu                   # Windows 는 faiss-gpu pip 배포가 없다.
                             # 코퍼스가 4,170 단위 규모라 CPU 검색으로 충분하다.
 sentence-transformers       # BGE-M3 임베딩
 
+# --- 테스트 (tests/, API 호출 없음) ---
+pytest
+
 # --- 주의: torch 는 여기서 설치하지 말 것 ---
 # RTX 5070 은 CUDA 빌드가 맞는 휠을 따로 받아야 한다.
 # https://pytorch.org/get-started/locally/ 에서 명령을 확인해 별도로 설치한다.

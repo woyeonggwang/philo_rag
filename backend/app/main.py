@@ -11,11 +11,11 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from . import personas, rag, retriever
+from . import personas, plans, rag, retriever
 from .config import get_settings
 
 logging.basicConfig(
@@ -29,6 +29,9 @@ async def lifespan(app: FastAPI):
     # 첫 요청에서 2GB 모델을 로딩하면 그 요청만 수십 초 걸린다. 기동 때 미리 올린다.
     log.info("모델과 인덱스를 미리 로딩합니다...")
     retriever.warmup([p.key for p in personas.listed() if p.enabled])
+    plan = plans.plan_for(plans.ANONYMOUS)     # DEFAULT_PLAN 오타면 여기서 바로 죽게
+    log.info("요금제: 모든 사용자 %s (하루 %s건) — DEFAULT_PLAN", plan.name,
+             plan.daily_limit if plan.daily_limit is not None else "무제한")
     # uvicorn 은 "http://0.0.0.0:8000" 을 찍는데, 0.0.0.0 은 바인드 주소라 브라우저로 열 수 없다 (ERR_ADDRESS_INVALID)
     log.info("준비 완료 — 문서: http://localhost:8000/docs")
     yield
@@ -37,7 +40,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="철학 RAG API", version="0.1.0", lifespan=lifespan)
 
 # 개발 단계에서는 에뮬레이터·실기기에서 바로 붙을 수 있게 열어둔다.
-# 배포 전에 반드시 좁힐 것. (CLAUDE.md 10절 — 인증·사용량 제한 미설계)
+# 배포 전에 반드시 좁힐 것. (CLAUDE.md 12절 — 인증 미설계. 사용량 제한은 plans.py)
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -63,6 +66,13 @@ class GlossaryItem(BaseModel):
     meaning: str
 
 
+class UsageInfo(BaseModel):
+    plan: str                  # "personal" | "pro"
+    plan_name: str             # 화면 표시용 ("Personal")
+    used_today: int            # 오늘 쓴 질문 수 (이번 질문 포함)
+    daily_limit: int | None    # None 이면 무제한
+
+
 class AskResponse(BaseModel):
     persona: str
     persona_name: str
@@ -73,6 +83,7 @@ class AskResponse(BaseModel):
     retries: int = 0           # 규칙 위반으로 다시 생성한 횟수 (CLAUDE.md 6.13)
     glossary: list[GlossaryItem] = []   # 답변 속 용어·호칭의 뜻. 각주용 (glossary.py)
     sources: list[Source]
+    usage: UsageInfo | None = None      # 요금제와 오늘 사용량 (plans.py)
 
 
 @app.get("/health")
@@ -88,7 +99,37 @@ def list_personas():
 
 
 @app.post("/ask", response_model=AskResponse)
-def ask(req: AskRequest):
+def ask(req: AskRequest,
+        x_user_id: str | None = Header(None, description="앱이 처음 실행될 때 만든 사용자 ID. 없으면 anonymous")):
+    try:
+        user_id = plans.normalize_user_id(x_user_id)
+    except plans.InvalidUserId as e:
+        raise HTTPException(400, str(e))
+
+    # 하루 한도 (plans.py). LLM 을 부르기 전에 1건을 미리 세고, 답을 못 주면 돌려준다
+    try:
+        usage = plans.reserve(user_id)
+    except plans.QuotaExceeded as e:
+        # 한도에 걸려도 위기 신호가 명백하면 상담전화 안내는 준다 (LLM 호출 없음, 사용량에 안 셈)
+        try:
+            safe = rag.safety_only(req.persona, req.question)
+        except KeyError:            # 없는·준비 중인 페르소나
+            safe = None
+        if safe is not None:
+            log.info("한도 초과지만 안전 안내 반환 (user=%s)", user_id)
+            return {**safe, "usage": e.usage.as_dict()}
+        raise HTTPException(429, str(e))
+
+    try:
+        result = _answer(req)
+    except HTTPException:
+        plans.refund(user_id, usage.day)
+        raise
+    return {**result, "usage": usage.as_dict()}
+
+
+def _answer(req: AskRequest) -> dict:
+    """rag.answer 를 부르고 오류를 앱이 읽을 수 있는 HTTP 오류로 바꾼다."""
     try:
         return rag.answer(req.persona, req.question, req.top_k)
     except KeyError:
