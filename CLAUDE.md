@@ -1192,8 +1192,12 @@ FastAPI 백엔드 **동작 확인 완료** (9.1절).
 - 대화 이력 유지 방식 미정 (매 요청 stateless vs 세션)
 - 배포처 미정 — 개발 중엔 로컬, 배포 시 클라우드 이전 예정. 이전 시 GPU 없는 환경의 임베딩 처리 방법 재결정 필요
 - ~~앱 인증·사용량 제한 미설계~~ — 사용량 제한 9.7, 로그인 13절 (둘 다 2026-10-10). 요금제 가격·pro 결제 방식(월 구독 / 크레딧)은 미정
-- **로그인은 코드만 있고 Firebase 프로젝트가 아직 없다** (사용자 계정으로 만들어야 한다, 13절 "설정 순서"). 그 전까지 앱은 "Firebase 설정 전" 안내 +
-  디버그 빌드의 "로그인 없이 계속(개발용)" 으로 돈다. 설정을 마치면 `.env` `AUTH_REQUIRED=true`
+- **Firebase 프로젝트 `philo-rag-ef4be` 생성됨 (2026-10-10, 사용자).** 집 PC `mobile/android/app/google-services.json` 배치 확인 (패키지 일치).
+  집 PC `.env` 에 `FIREBASE_PROJECT_ID=philo-rag-ef4be`, **`AUTH_REQUIRED=true`** (사용자 지시). 두 번째 PC 는 json·`.env` 둘 다 아직
+- **받은 `google-services.json` 에 `oauth_client` 가 비어 있다** — SHA-1 등록·Google 로그인 사용 설정 전에 받은 파일이다.
+  이 상태로는 **구글 로그인이 안 된다** (google_sign_in 이 웹 클라이언트 ID `default_web_client_id` 를 못 찾아 `MISSING_SERVER_CLIENT_ID`).
+  SHA-1 등록 + Authentication 에서 Google 사용 설정 → 파일을 **다시 받아** 바꿔 넣을 것. 이메일 로그인은 이 파일로도 된다
+- **`AUTH_REQUIRED=true` 라 토큰 없는 요청은 401** — 브라우저 `/chat` 테스트 화면(9.8)과 앱의 "로그인 없이 계속(개발용)" 이 질문을 못 보낸다
 - **Apple 로그인은 Apple Developer Program(연 $99) 가입이 있어야 켤 수 있다.** iOS 출시 계획이 없어 필수는 아니다 — 가입 전까지 버튼은 오류 문장을 띄운다
 - 로그인 도입 전에 폰에 저장된 대화(`chats/<persona>.json`)는 계정별 폴더로 옮기지 않았다 (시험 데이터라 버림)
 - 이메일 가입은 인증 메일을 보내지 않는다 — 남의 이메일로도 가입된다. 필요하면 `sendEmailVerification` 을 붙일 것
