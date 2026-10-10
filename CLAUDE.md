@@ -1200,7 +1200,9 @@ FastAPI 백엔드 **동작 확인 완료** (9.1절).
   type 1(Android, 집 PC SHA-1 `26226fed…`) + type 3(웹) 이 들어왔다. Firebase 콘솔 새 메뉴에서 Authentication 은 **왼쪽 "보안"** 아래에 있다.
   google-services 플러그인이 적용된 첫 빌드 성공, `default_web_client_id` 리소스 생성 확인 (google_sign_in 이 이걸 serverClientId 로 쓴다).
   **두 번째 PC SHA-1 을 추가하면 json 을 다시 받아 두 PC 모두 바꿔 넣을 것** — Android OAuth 클라이언트는 등록된 SHA-1 마다 하나씩 들어간다
-- 기기에서 실제 로그인은 아직 안 해 봤다 `[확인필요]`. 에뮬레이터에서 구글 로그인을 하려면 기기 설정에 구글 계정이 있어야 한다
+- **기기 확인 (2026-10-10, 에뮬레이터)**: 앱 데이터를 지우고 켜니 `FirebaseInitProvider: FirebaseApp initialization successful` →
+  소개 화면 → "시작하기" → 로그인 화면 (Firebase 설정 전 경고 없음 = 로그인 켜짐). **실제 로그인은 아직 안 해 봤다** `[확인필요]`.
+  에뮬레이터에서 구글 로그인을 하려면 기기 설정에 구글 계정이 있어야 한다
 - **출시 때 `AUTH_REQUIRED=true` 로 바꿀 것.** true 면 토큰 없는 요청은 401 — 브라우저 `/chat` 테스트 화면(9.8)과 앱의 "로그인 없이 계속(개발용)" 이 질문을 못 보낸다
 - **Apple 로그인은 Apple Developer Program(연 $99) 가입이 있어야 켤 수 있다.** iOS 출시 계획이 없어 필수는 아니다 — 가입 전까지 버튼은 오류 문장을 띄운다
 - 로그인 도입 전에 폰에 저장된 대화(`chats/<persona>.json`)는 계정별 폴더로 옮기지 않았다 (시험 데이터라 버림)
@@ -1249,6 +1251,10 @@ mobile/lib/
 - **에뮬레이터에서 한글 입력이 안 된다** — 앱 문제가 아니다. PC 키보드는 키 코드로 전달돼 Windows 한글 IME 가 안 먹고,
   에뮬레이터 Gboard 는 영어 자판만 켜져 있다. 에뮬레이터 설정 → 시스템 → 언어 및 입력 → 화상 키보드 → Gboard → 언어 → 한국어(2벌식) 추가.
   급하면 PC 에서 복사해 질문칸에 길게 눌러 붙여넣기 (클립보드 공유됨). 실기기는 해당 없음
+- **Android Studio ▷ 가 `Unable to find suitable Visual Studio toolchain` / `App failed to start` 로 실패** (2026-10-10, 사용자가 "실행이 잘 안 된다"고
+  했던 것). 위쪽 기기 선택이 **"Windows (desktop)"** 이었다 — 에뮬레이터가 꺼져 있으면 Android 기기가 목록에 없어 Windows 가 골라진다.
+  집 PC 는 VS C++ 워크로드가 없어 Windows 빌드가 안 된다 (1절, Windows 버전 단계에서 설치). **에뮬레이터를 먼저 켜고**
+  (Device Manager ▶, 또는 `flutter emulators --launch Pixel_9`) 기기 목록에서 `sdk gphone64 x86 64` 를 고른 뒤 ▷. 집 PC 에뮬레이터 ID 는 `Pixel_9`
 - `taskkill /F /IM java.exe` 는 Git Bash 에서 `/F` 가 경로로 바뀌어 안 된다. PowerShell `Get-Process java | Stop-Process -Force` 를 쓴다
 
 **동작 확인 (2026-09-20, 에뮬레이터)**: 앱 → `http://10.0.2.2:8000` → `/health` `/personas` 성공. 세 페르소나(니체·예수·부처)가 화면에 떴다.
