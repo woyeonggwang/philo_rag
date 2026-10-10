@@ -54,9 +54,10 @@ class FakeAuth implements AuthBackend {
   Future<String?> idToken() async => 'token-of-current-user';
 }
 
+/// 앱을 켠다. [passTitle] 이면 첫 화면을 눌러 넘긴 상태로 돌려준다.
 Future<(SettingsStore, AuthController, FakeAuth)> _app(WidgetTester t,
-    {bool welcomeSeen = false, bool available = true}) async {
-  SharedPreferences.setMockInitialValues({if (welcomeSeen) 'welcome_seen': true});
+    {bool passTitle = false, bool available = true}) async {
+  SharedPreferences.setMockInitialValues({});
   final settings = SettingsStore();
   await settings.load();
   final backend = FakeAuth(available: available);
@@ -68,36 +69,54 @@ Future<(SettingsStore, AuthController, FakeAuth)> _app(WidgetTester t,
       home: (_, user) => Scaffold(body: Text('HOME ${user.label}')),
     ),
   ));
+  if (passTitle) {
+    await t.tapAt(const Offset(200, 120)); // 첫 화면 아무 데나
+    await t.pump();
+  }
   return (settings, auth, backend);
 }
 
 void main() {
-  testWidgets('첫 실행: 로딩 → 소개 → 화면을 누르면 → 로그인 화면, 소개는 한 번만', (t) async {
-    final (settings, _, backend) = await _app(t);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget); // 저장된 로그인 확인 중
+  testWidgets('켤 때마다 첫 화면 → 화면을 누르면 → 로그인 화면', (t) async {
+    final (settings, auth, backend) = await _app(t);
+    expect(find.byType(WelcomeScreen), findsOneWidget); // 로그인 확인 중에도 첫 화면이 먼저
+    expect(find.byType(FilledButton), findsNothing); // 버튼 없음 (사용자 결정)
     backend.emit(null);
     await t.pump();
-    expect(find.byType(WelcomeScreen), findsOneWidget);
-    expect(find.byType(FilledButton), findsNothing); // 버튼 없음 (사용자 결정)
+    expect(find.byType(WelcomeScreen), findsOneWidget); // 누르기 전에는 넘어가지 않는다
     await t.tapAt(const Offset(200, 120)); // 화면 아무 데나
     await t.pump();
     expect(find.byType(LoginScreen), findsOneWidget);
-    expect(settings.welcomeSeen, isTrue);
-    final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getBool('welcome_seen'), isTrue); // 다음 실행엔 소개를 건너뛴다
+
+    // 다시 켜면 첫 화면이 또 나온다 — 한 번만이 아니다 (앱을 내렸다 다시 올린 것처럼 화면을 비웠다가 새로 그린다)
+    await t.pumpWidget(const SizedBox());
+    await t.pumpWidget(MaterialApp(
+        home: AuthGate(settings: settings, auth: auth, home: (_, u) => Text('HOME ${u.label}'))));
+    await t.pump();
+    expect(find.byType(WelcomeScreen), findsOneWidget);
   });
 
-  testWidgets('이미 로그인돼 있으면 로그인 화면 없이 바로 홈', (t) async {
+  testWidgets('이미 로그인돼 있으면 첫 화면 → 누르면 로그인 화면 없이 바로 홈', (t) async {
     final (_, _, backend) = await _app(t);
     backend.emit(const AppUser(uid: 'g1', email: 'a@gmail.com', provider: 'google.com'));
     await t.pump();
+    expect(find.byType(WelcomeScreen), findsOneWidget);
+    await t.tapAt(const Offset(200, 120));
+    await t.pump();
     expect(find.text('HOME a@gmail.com'), findsOneWidget);
     expect(find.byType(LoginScreen), findsNothing);
-    expect(find.byType(WelcomeScreen), findsNothing);
+  });
+
+  testWidgets('첫 화면을 일찍 눌러 로그인 확인이 덜 끝났으면 잠깐 로딩', (t) async {
+    final (_, _, backend) = await _app(t, passTitle: true);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    backend.emit(null);
+    await t.pump();
+    expect(find.byType(LoginScreen), findsOneWidget);
   });
 
   testWidgets('구글 · 애플 · 이메일 로그인 → 홈, 로그아웃 → 로그인 화면', (t) async {
-    final (_, auth, backend) = await _app(t, welcomeSeen: true);
+    final (_, auth, backend) = await _app(t, passTitle: true);
     backend.emit(null);
     await t.pump();
 
@@ -126,7 +145,7 @@ void main() {
   });
 
   testWidgets('가입하기로 바꾸면 가입을 부른다 · 짧은 비밀번호는 보내기 전에 막는다', (t) async {
-    final (_, _, backend) = await _app(t, welcomeSeen: true);
+    final (_, _, backend) = await _app(t, passTitle: true);
     backend.emit(null);
     await t.pump();
     await t.tap(find.text('처음이신가요? 가입하기'));
@@ -145,7 +164,7 @@ void main() {
   });
 
   testWidgets('실패 문장을 화면에 보여준다', (t) async {
-    final (_, _, backend) = await _app(t, welcomeSeen: true);
+    final (_, _, backend) = await _app(t, passTitle: true);
     backend.emit(null);
     await t.pump();
     backend.failWith = const AuthFailure('이 로그인 방식이 아직 Firebase 콘솔에서 켜져 있지 않습니다.');
@@ -156,7 +175,7 @@ void main() {
   });
 
   testWidgets('Firebase 설정 전: 경고를 보여 주고, 개발용 우회로 들어갈 수 있다 (토큰 없음)', (t) async {
-    final (_, auth, _) = await _app(t, welcomeSeen: true, available: false);
+    final (_, auth, _) = await _app(t, passTitle: true, available: false);
     await t.pump();
     expect(find.textContaining('Firebase 설정 전'), findsOneWidget);
     await t.scrollUntilVisible(find.byKey(const Key('dev-skip')), 200,

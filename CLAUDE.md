@@ -1284,7 +1284,7 @@ mobile/lib/
   Android 자동 백업(템플릿 기본값 `allowBackup` 켜짐)에 이 폴더가 포함될 수 있다 `[확인필요]`.
   검증: `mobile/test/chat_storage_test.dart` 5개 (근거·각주·사용량·위기 안내 왕복 / 200개 / 오류 / 지우기 / 깨진 파일). 기기 실측은 아직
 - ~~`ui/placeholder_home.dart` — 임시 화면~~ — 2026-10-10 지움. 아래 "화면 구성" 의 바둑판·대화창으로 대체
-- **화면 구성 (2026-10-10, 사용자 결정)**: 소개(화면 아무 데나 누르면 넘어감, 버튼 없음) → 로그인 → **철학자 2열 바둑판**
+- **화면 구성 (2026-10-10, 사용자 결정)**: 첫 화면(켤 때마다, 화면 아무 데나 누르면 넘어감, 버튼 없음) → 로그인(로그인돼 있으면 건너뜀) → **철학자 2열 바둑판**
   (`ui/persona_grid_screen.dart`) → 누르면 **그 철학자의 대화창** (`ui/chat_screen.dart`, 뒤로 가면 바둑판).
   예전 임시 화면 위쪽의 서버 주소 입력·"연결" 줄은 없앴다. 대신 ① 바둑판이 서버가 켜지는 중이면 3초 간격으로 10번까지 다시 묻고
   (모델 로딩 20초 대응) 그래도 안 되면 "다시 시도" 버튼 ② 서버 주소는 계정 메뉴의 **"서버 주소 (개발용)"** — 디버그 빌드에만 있다 (실기기 LAN IP 용).
@@ -1308,13 +1308,15 @@ mobile/lib/
 |---|---|
 | `state/auth.dart` | `AuthController` (상태 unknown/signedOut/signedIn, 로그인·가입·비밀번호 재설정·로그아웃, `idToken()`), `AuthBackend` 인터페이스, `AppUser`, `AuthFailure`(한국어 문장) |
 | `state/firebase_auth_backend.dart` | Firebase 구현. 구글은 `google_sign_in`(Credential Manager) → `signInWithCredential`, 애플은 `signInWithProvider(AppleAuthProvider)`(Android 에서도 웹 창), 이메일은 `signInWithEmailAndPassword`/`createUser…`/`sendPasswordResetEmail`. Firebase 오류 코드 → 한국어 문장. 사용자가 창을 닫은 취소는 오류로 안 보인다 |
-| `ui/auth_gate.dart` | 확인 중 → 로딩 / 로그인됨 → 바로 홈 / 처음 실행 → 소개 → 로그인 / 소개 본 뒤 → 로그인 |
-| `ui/welcome_screen.dart` | 처음 한 번만 보이는 소개. **화면 아무 데나 누르면** 넘어간다 (`SettingsStore.welcomeSeen`) |
+| `ui/auth_gate.dart` | **켤 때마다** 첫 화면 → 누르면 (로그인됨 → 바로 홈 / 안 됨 → 로그인 / 아직 확인 중 → 잠깐 로딩) |
+| `ui/welcome_screen.dart` | 첫 화면. **화면 아무 데나 누르면** 넘어간다. 켤 때마다 나온다 — 처음엔 "설치 후 한 번만"(`welcomeSeen` 저장)이었는데, 내가 에뮬레이터 확인 중 한 번 넘긴 뒤로 안 떠서 사용자가 "첫 화면이 안 뜬다"고 했다. 켤 때마다로 바꾸고 저장 값은 없앴다 (2026-10-10) |
 | `ui/login_screen.dart` | 구글·애플 버튼, 이메일 로그인/가입 전환, 비밀번호 찾기, 오류 문장. **디버그 빌드에만** "로그인 없이 계속(개발용)" |
 | `ui/home_shell.dart` | 로그인한 계정의 홈. 계정마다 `ChatController` 를 새로 만들고 대화를 **계정별 폴더**(`chats/<uid>/`)에 저장. 철학자 바둑판을 띄운다 |
 | `ui/persona_grid_screen.dart` | 바둑판 오른쪽 위 임시 계정 메뉴 (이름 · 서버 주소(개발용) · 로그아웃) |
 
-- 로그인 유지: Firebase 가 기기에 저장하므로 다시 켜면 `authStateChanges` 가 바로 사용자를 준다 → 로그인 화면을 건너뛴다
+- 로그인 유지: Firebase 가 기기에 저장하므로 다시 켜면 `authStateChanges` 가 바로 사용자를 준다 → 첫 화면을 누르면 로그인 화면 없이 홈.
+  첫 화면이 떠 있는 동안 로그인 상태 확인이 끝나므로 누른 뒤 로딩은 거의 안 보인다
+- **화면 디자인은 Codex 가 다듬는 중** (앱 이름 "쉼표,", `ui/app_theme.dart` 다크 테마, 2026-10-10). Codex 수정분은 Codex 쪽에서 커밋한다
 - 서버 연결: `PhiloRagClient(idToken: auth.idToken)` 이 요청마다 `Authorization: Bearer` 를 붙인다 (토큰은 1시간짜리라 SDK 가 알아서 갱신).
   서버 `auth.py` 가 Google 공개키로 검증 — **서비스 계정 키 불필요, `FIREBASE_PROJECT_ID` 만**. 401 은 `ApiException.isAuthError`
 - **Firebase 설정이 없어도 앱이 켜진다**: `google-services.json` 이 없으면 Gradle 의 google-services 플러그인이 적용되지 않고
