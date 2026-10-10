@@ -1195,10 +1195,12 @@ FastAPI 백엔드 **동작 확인 완료** (9.1절).
 - **Firebase 프로젝트 `philo-rag-ef4be` 생성됨 (2026-10-10, 사용자).** 집 PC `mobile/android/app/google-services.json` 배치 확인 (패키지 일치).
   집 PC `.env` 에 `FIREBASE_PROJECT_ID=philo-rag-ef4be`, **`AUTH_REQUIRED=false` — 출시 전까지 false 로 둔다 (사용자 결정 2026-10-10)**.
   두 번째 PC 는 json·`.env` 둘 다 아직
-- **받은 `google-services.json` 에 `oauth_client` 가 비어 있다** (682바이트. 13:28 에 다시 받은 파일도 같음) — 콘솔에서 SHA-1 등록·Google 로그인
-  사용 설정이 안 된 상태에서 받으면 이렇다. 다시 받기만 해서는 안 채워진다.
-  이 상태로는 **구글 로그인이 안 된다** (google_sign_in 이 웹 클라이언트 ID `default_web_client_id` 를 못 찾아 `MISSING_SERVER_CLIENT_ID`).
-  SHA-1 등록 + Authentication 에서 Google 사용 설정 → 파일을 **다시 받아** 바꿔 넣을 것. 이메일 로그인은 이 파일로도 된다
+- ~~받은 `google-services.json` 에 `oauth_client` 가 비어 있다~~ — **해결 (2026-10-10 13:34)**. 원인은 Authentication 에서 **Google 로그인을
+  켜지 않은 채** 받은 것 (SHA-1 은 이미 등록돼 있었다). Google·이메일/비밀번호를 켠 뒤 다시 받으니 1,325바이트, `oauth_client` 에
+  type 1(Android, 집 PC SHA-1 `26226fed…`) + type 3(웹) 이 들어왔다. Firebase 콘솔 새 메뉴에서 Authentication 은 **왼쪽 "보안"** 아래에 있다.
+  google-services 플러그인이 적용된 첫 빌드 성공, `default_web_client_id` 리소스 생성 확인 (google_sign_in 이 이걸 serverClientId 로 쓴다).
+  **두 번째 PC SHA-1 을 추가하면 json 을 다시 받아 두 PC 모두 바꿔 넣을 것** — Android OAuth 클라이언트는 등록된 SHA-1 마다 하나씩 들어간다
+- 기기에서 실제 로그인은 아직 안 해 봤다 `[확인필요]`. 에뮬레이터에서 구글 로그인을 하려면 기기 설정에 구글 계정이 있어야 한다
 - **출시 때 `AUTH_REQUIRED=true` 로 바꿀 것.** true 면 토큰 없는 요청은 401 — 브라우저 `/chat` 테스트 화면(9.8)과 앱의 "로그인 없이 계속(개발용)" 이 질문을 못 보낸다
 - **Apple 로그인은 Apple Developer Program(연 $99) 가입이 있어야 켤 수 있다.** iOS 출시 계획이 없어 필수는 아니다 — 가입 전까지 버튼은 오류 문장을 띄운다
 - 로그인 도입 전에 폰에 저장된 대화(`chats/<persona>.json`)는 계정별 폴더로 옮기지 않았다 (시험 데이터라 버림)
