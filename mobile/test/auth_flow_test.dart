@@ -72,13 +72,14 @@ Future<(SettingsStore, AuthController, FakeAuth)> _app(WidgetTester t,
 }
 
 void main() {
-  testWidgets('첫 실행: 로딩 → 소개 → 시작하기 → 로그인 화면, 소개는 한 번만', (t) async {
+  testWidgets('첫 실행: 로딩 → 소개 → 화면을 누르면 → 로그인 화면, 소개는 한 번만', (t) async {
     final (settings, _, backend) = await _app(t);
     expect(find.byType(CircularProgressIndicator), findsOneWidget); // 저장된 로그인 확인 중
     backend.emit(null);
     await t.pump();
     expect(find.byType(WelcomeScreen), findsOneWidget);
-    await t.tap(find.text('시작하기'));
+    expect(find.byType(FilledButton), findsNothing); // 버튼 없음 (사용자 결정)
+    await t.tapAt(const Offset(200, 120)); // 화면 아무 데나
     await t.pump();
     expect(find.byType(LoginScreen), findsOneWidget);
     expect(settings.welcomeSeen, isTrue);

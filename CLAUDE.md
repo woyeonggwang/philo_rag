@@ -1283,7 +1283,14 @@ mobile/lib/
   **저장은 기억이 아니다** — 서버는 여전히 매 질문을 따로 받는다 (12절 "대화 이력 유지 방식 미정").
   Android 자동 백업(템플릿 기본값 `allowBackup` 켜짐)에 이 폴더가 포함될 수 있다 `[확인필요]`.
   검증: `mobile/test/chat_storage_test.dart` 5개 (근거·각주·사용량·위기 안내 왕복 / 200개 / 오류 / 지우기 / 깨진 파일). 기기 실측은 아직
-- `ui/placeholder_home.dart` — **임시 화면**. Codex 가 만들 정식 UI 로 교체. api/·state/ 사용 예시 역할
+- ~~`ui/placeholder_home.dart` — 임시 화면~~ — 2026-10-10 지움. 아래 "화면 구성" 의 바둑판·대화창으로 대체
+- **화면 구성 (2026-10-10, 사용자 결정)**: 소개(화면 아무 데나 누르면 넘어감, 버튼 없음) → 로그인 → **철학자 2열 바둑판**
+  (`ui/persona_grid_screen.dart`) → 누르면 **그 철학자의 대화창** (`ui/chat_screen.dart`, 뒤로 가면 바둑판).
+  예전 임시 화면 위쪽의 서버 주소 입력·"연결" 줄은 없앴다. 대신 ① 바둑판이 서버가 켜지는 중이면 3초 간격으로 10번까지 다시 묻고
+  (모델 로딩 20초 대응) 그래도 안 되면 "다시 시도" 버튼 ② 서버 주소는 계정 메뉴의 **"서버 주소 (개발용)"** — 디버그 빌드에만 있다 (실기기 LAN IP 용).
+  대화창: 철학자 이름 + 뒤로 + 지우기(확인 창), 빈 대화엔 "OO에게 물어보세요." + 소개, 말풍선(용어 풀이·근거 구절 접힘·근거 없음 표시), 새 메시지 오면 맨 아래로.
+  검증: `mobile/test/persona_grid_test.dart` 3개 (2열·연결 줄 없음 / 누르면 대화창·질문·뒤로 / 서버 켜지는 중 재시도),
+  에뮬레이터에서 소개 → 터치 → 로그인 → 개발용 우회 → 바둑판 → 예수 대화창까지 화면 확인 (질문은 안 보냄)
 - `ui/source_tile.dart` — 근거 구절 목록 위젯 (2026-09-22, 사용자 요청으로 Claude 가 작성). `SourcesSection` 은
   **"근거 구절 N개" 한 줄만 보이고 기본은 접힘**, 누르면 "1. 마태복음 3:1~3:15" (한글 작품명 + 위치) 목록이 펼쳐진다.
   **각 줄은 누를 수 없고 본문도 보여주지 않는다** (사용자 결정). 서버 호출 없음. Codex 가 정식 UI 를 만들 때 그대로 쓰거나 디자인만 바꾸면 된다.
@@ -1302,10 +1309,10 @@ mobile/lib/
 | `state/auth.dart` | `AuthController` (상태 unknown/signedOut/signedIn, 로그인·가입·비밀번호 재설정·로그아웃, `idToken()`), `AuthBackend` 인터페이스, `AppUser`, `AuthFailure`(한국어 문장) |
 | `state/firebase_auth_backend.dart` | Firebase 구현. 구글은 `google_sign_in`(Credential Manager) → `signInWithCredential`, 애플은 `signInWithProvider(AppleAuthProvider)`(Android 에서도 웹 창), 이메일은 `signInWithEmailAndPassword`/`createUser…`/`sendPasswordResetEmail`. Firebase 오류 코드 → 한국어 문장. 사용자가 창을 닫은 취소는 오류로 안 보인다 |
 | `ui/auth_gate.dart` | 확인 중 → 로딩 / 로그인됨 → 바로 홈 / 처음 실행 → 소개 → 로그인 / 소개 본 뒤 → 로그인 |
-| `ui/welcome_screen.dart` | 처음 한 번만 보이는 소개 + "시작하기" (`SettingsStore.welcomeSeen`) |
+| `ui/welcome_screen.dart` | 처음 한 번만 보이는 소개. **화면 아무 데나 누르면** 넘어간다 (`SettingsStore.welcomeSeen`) |
 | `ui/login_screen.dart` | 구글·애플 버튼, 이메일 로그인/가입 전환, 비밀번호 찾기, 오류 문장. **디버그 빌드에만** "로그인 없이 계속(개발용)" |
-| `ui/home_shell.dart` | 로그인한 계정의 홈. 계정마다 `ChatController` 를 새로 만들고 대화를 **계정별 폴더**(`chats/<uid>/`)에 저장. 지금은 임시 화면을 띄운다 |
-| `ui/placeholder_home.dart` | 임시 계정 메뉴(이름 + 로그아웃) 추가 |
+| `ui/home_shell.dart` | 로그인한 계정의 홈. 계정마다 `ChatController` 를 새로 만들고 대화를 **계정별 폴더**(`chats/<uid>/`)에 저장. 철학자 바둑판을 띄운다 |
+| `ui/persona_grid_screen.dart` | 바둑판 오른쪽 위 임시 계정 메뉴 (이름 · 서버 주소(개발용) · 로그아웃) |
 
 - 로그인 유지: Firebase 가 기기에 저장하므로 다시 켜면 `authStateChanges` 가 바로 사용자를 준다 → 로그인 화면을 건너뛴다
 - 서버 연결: `PhiloRagClient(idToken: auth.idToken)` 이 요청마다 `Authorization: Bearer` 를 붙인다 (토큰은 1시간짜리라 SDK 가 알아서 갱신).

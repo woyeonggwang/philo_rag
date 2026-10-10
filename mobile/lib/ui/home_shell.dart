@@ -1,5 +1,5 @@
 /// 로그인한 사용자의 홈 (2026-10-10). 계정마다 대화 상태·저장 폴더를 따로 만든다.
-/// 지금은 임시 화면(PlaceholderHome)을 띄운다 — Codex 의 정식 화면으로 바꿀 때 이 파일의 build() 만 바꾸면 된다.
+/// 첫 화면은 철학자 2열 바둑판(persona_grid_screen.dart), 누르면 대화창(chat_screen.dart).
 library;
 
 import 'package:flutter/material.dart';
@@ -9,7 +9,7 @@ import '../state/auth.dart';
 import '../state/chat.dart';
 import '../state/chat_storage.dart';
 import '../state/settings.dart';
-import 'placeholder_home.dart';
+import 'persona_grid_screen.dart';
 
 class HomeShell extends StatefulWidget {
   final SettingsStore settings;
@@ -50,6 +50,10 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   @override
-  Widget build(BuildContext context) =>
-      PlaceholderHome(settings: widget.settings, chat: _chat, auth: widget.auth);
+  Widget build(BuildContext context) => PersonaGridScreen(
+        settings: widget.settings,
+        chat: _chat,
+        auth: widget.auth,
+        client: _client,
+      );
 }
