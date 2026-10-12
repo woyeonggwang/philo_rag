@@ -32,8 +32,8 @@ class FakeLLM:
     def invoke(self, messages):
         self.calls += 1
         content = messages[-1].content
-        if content.startswith("다음 메시지를 쓴 사람이"):
-            return _Resp("아니오")
+        if content.startswith("다음 메시지를 아래 셋 중"):
+            return _Resp("일반")
         return _Resp(ANSWER)
 
 

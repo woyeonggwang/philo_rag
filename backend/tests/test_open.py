@@ -32,8 +32,10 @@ class _Resp:
 class FakeLLM:
     """답변을 차례로 돌려준다. 답변 호출마다 온도와 마지막 사용자 메시지를 기록한다."""
 
-    def __init__(self, answers):
+    def __init__(self, answers, label="일반"):
         self.answers = list(answers)
+        self.label = label          # 분류 호출(위기/미혹/일반)에 돌려줄 답
+        self.classified = 0
         self.temps, self.prompts = [], []
         self._temp = None
 
@@ -43,8 +45,9 @@ class FakeLLM:
 
     def invoke(self, messages):
         content = messages[-1].content
-        if content.startswith("다음 메시지를 쓴 사람이"):     # 위기 판단
-            return _Resp("아니오")
+        if content.startswith("다음 메시지를 아래 셋 중"):    # 위기·미혹 분류
+            self.classified += 1
+            return _Resp(self.label)
         self.temps.append(self._temp)
         self.prompts.append(messages[1].content)
         return _Resp(self.answers.pop(0))
@@ -52,8 +55,8 @@ class FakeLLM:
 
 @pytest.fixture
 def fake(monkeypatch):
-    def make(*answers):
-        f = FakeLLM(answers)
+    def make(*answers, label="일반"):
+        f = FakeLLM(answers, label)
         monkeypatch.setattr(llm, "get_llm", f.at)
         return f
     return make
@@ -109,6 +112,7 @@ def test_cult_question_answers_with_false_prophet_passages(client, fake, monkeyp
     assert body["grounded"] is True
     assert {s["work_ko"] for s in body["sources"]} >= {"마태복음", "마가복음"}
     assert any("7:" in s["ref"] for s in body["sources"])            # 마 7:15
+    assert any(s["ref"].startswith("24:") for s in body["sources"])  # 마 24:23~24
     assert '"거짓 선지자들을 삼가라"고 분명히 말하라' in f.prompts[0]
     assert "찬반을 나누지 마라" in f.prompts[0]
     assert f.temps == [None, None]                                   # 온도는 평소대로
@@ -133,3 +137,34 @@ def test_cult_passages_for_nietzsche_and_buddha():
 ])
 def test_cult_patterns(q, hit):
     assert bool(rag.CULT_PATTERNS.search(q)) is hit
+
+
+def test_claim_without_a_name_is_caught_by_the_classifier(client, fake, monkeypatch):
+    """이름 없이 "이분이 선지자입니까" 하고 묻는 것은 분류 호출의 "미혹"이 잡는다 (사용자 지적 2026-10-12)."""
+    monkeypatch.setattr(retriever, "search", lambda *a, **k: pytest.fail("검색하면 안 된다"))
+    f = fake(WARN, label="미혹")
+    body = _ask(client, "jesus", "우리 교회 목사님 설교를 들어 보니 이분이 선지자 같은데 맞습니까?")
+    assert body["answer"] == WARN and body["grounded"] is True
+    assert "찬반을 나누지 마라" in f.prompts[0]
+    assert f.classified == 1                                         # 위기 판단과 같은 한 번의 호출
+
+
+def test_crisis_wins_over_cult(client, fake):
+    """위기 신호가 있으면 사이비 이름이 있어도 안전 경로가 먼저다."""
+    f = fake("너는 혼자가 아니니라. 이 밤이 끝이 아니니라.", label="위기")
+    body = _ask(client, "jesus", "신천지에서 나왔는데 이제 아무것도 남지 않았습니다")
+    assert body["safety"] is True and body["sources"] == []
+    assert body["answer"].startswith(rag.SAFETY_NOTICE)
+    assert f.classified == 1
+
+
+def test_ordinary_prophet_question_stays_normal(client, fake, monkeypatch):
+    """분류가 "일반"이면(세례 요한 같은 성경 속 인물) 보통 검색 경로다."""
+    called = {}
+    def search(*a, **k):
+        called["search"] = True
+        return []
+    monkeypatch.setattr(retriever, "search", search)
+    fake(PRO_CON)
+    _ask(client, "jesus", "세례 요한은 선지자입니까?")
+    assert called.get("search")

@@ -31,33 +31,38 @@ NO_CONTEXT = """질문: {question}
 
 # ── 사이비·이단 (2026-10-12 사용자 결정) ──
 # 이런 질문은 찬반을 나누지 않고 무조건 경계하게 한다. 근거 구절은 검색이 아니라 문구로 고른다
-# (한국어 질문으로는 마 7:15 가 상위에 안 올라온다. retriever.find). 목록에 없는 이름은 잡지 못한다 — 늘려 쓸 것.
+# (한국어 질문으로는 마 7:15 가 상위에 안 올라온다. retriever.find).
+# 1차: 이름 목록(정규식, 공짜). 2차: "OO가 재림 예수입니까", "OO의 설교를 들어 보니 선지자입니까" 처럼
+#      이름 없이 묻는 것은 분류 호출(CLASSIFY_PROMPT 의 "미혹")이 잡는다. 위기 판단과 한 번에 묻기 때문에 호출이 늘지 않는다.
 CULT_PATTERNS = re.compile(
     r"이만희|신천지|정명석|JMS|기독교복음선교회|안상홍|장길자|하나님의교회\s*세계복음선교협회|"
     r"문선명|한학자|통일교|통일\s*가정연합|유병언|구원파|이재록|만민중앙|신옥주|은혜로\s*교회", re.I)
 
 CULT_NEEDLES = {
-    "jesus": ["Beware of false prophets", "false Christs"],            # 마 7:15, 24:24, 막 13:22
+    # 마 7:15 / 24:23 "보라 그리스도가 여기 있다 하여도 믿지 말라" / 24:24 / 막 13:21~22
+    "jesus": ["Beware of false prophets", "Lo, here is Christ", "false Christs"],
     "nietzsche": ["lose me and find yourselves", 'pronounced "holy."'],  # 차라투스트라 「베푸는 덕」, 이 사람을 보라 「나는 왜 운명인가」 1
     "buddha": ["don't go by oral transmission"],                       # 깔라마경
 }
 
 CULT_NOTE = """
 
-질문에 나온 사람이나 단체는 스스로 재림주·구원자를 자처하며 사람을 미혹하는 무리다. 찬반을 나누지 마라.
+이 질문은 어떤 사람이나 단체를 재림주·선지자·구원자로 믿고 따르는 일에 관한 것이다. 찬반을 나누지 마라.
 위 구절로 {cult_line}"""
 
 # ── 안전 분기 (CLAUDE.md 6.19) ──
 # 1차: 정규식 — 명백한 표현은 호출 없이 잡는다 (빠르고 공짜).
 # 2차: LLM 판단 — "삶이 고통스러운데 계속 살아야 할 이유가 있습니까?" 처럼 정규식이 못 잡는
 #      위기 신호를 모델이 가린다. 위기면 검색을 건너뛰고 고정 안내 뒤에 짧은 말만 붙인다.
+# 2026-10-12: 같은 호출에서 "미혹"(재림주·선지자 판별 질문)도 함께 가린다 (CLAUDE.md 6.21). 위기가 언제나 먼저다.
 SAFETY_PATTERNS = re.compile(
     r"자살|자해|죽고\s*싶|죽어\s*버리|사라지고\s*싶|없어지고\s*싶|살기\s*싫|살아갈\s*자신|"
     r"살\s*이유가?\s*없|끝내고\s*싶|목숨을?\s*끊|뛰어내리|손목을?\s*긋")
 
-CRISIS_PROMPT = """다음 메시지를 쓴 사람이 자해·자살을 생각하거나 삶을 포기하려는 위기 상태로 보이는가?
-철학적·일반적 질문이면 "아니오". 본인의 위기가 비치면 "예". 확실하지 않으면 "예".
-"예" 또는 "아니오" 한 단어로만 답하라.
+CLASSIFY_PROMPT = """다음 메시지를 아래 셋 중 하나로 분류하라. 한 단어로만 답하라.
+위기: 쓴 사람 본인이 자해·자살을 생각하거나 삶을 포기하려는 위기로 보인다. 확실하지 않으면 위기.
+미혹: 어떤 사람이나 단체가 재림 예수·재림주·메시아·보혜사·선지자·구원자인지 묻거나, 그렇다고 하는 사람·단체를 믿고 따라도 되는지 묻는다.
+일반: 그 밖의 모든 것. 성경 속 인물이 선지자인지, 예수의 재림 자체, "당신"이 누구인지를 묻는 것도 일반이다.
 
 메시지: {question}"""
 
@@ -71,14 +76,21 @@ SAFETY_TEMPLATE = """상대가 이렇게 말했다: "{question}"
 상대가 여기 있다는 것, 이 대화가 끝이 아니라는 것만 전하라. 상담전화·전문가 이야기는 반복하지 마라."""
 
 
-def _is_crisis(question: str) -> tuple[bool, str]:
-    """위기 여부와 판단 근거("regex" | "llm"). 정규식이 잡으면 호출 없이 끝낸다."""
+def _classify(question: str) -> tuple[str, str]:
+    """("위기" | "미혹" | "일반", 판단 근거 "regex" | "llm"). 위기 정규식이 잡으면 호출 없이 끝낸다.
+    사이비 이름 정규식이 잡혀도 분류는 부른다 — 위기 판단을 건너뛰지 않기 위해서다."""
     if SAFETY_PATTERNS.search(question):
-        return True, "regex"
+        return "위기", "regex"
     from .llm import get_llm
-    resp = get_llm().invoke([HumanMessage(content=CRISIS_PROMPT.format(question=question))])
-    verdict = resp.text.strip()
-    return verdict.startswith("예"), "llm"
+    resp = get_llm().invoke([HumanMessage(content=CLASSIFY_PROMPT.format(question=question))])
+    verdict = resp.text.strip()[:6]
+    if "위기" in verdict:
+        return "위기", "llm"
+    if "미혹" in verdict:
+        return "미혹", "llm"
+    if CULT_PATTERNS.search(question):
+        return "미혹", "regex"
+    return "일반", "llm"
 
 
 def _invoke(persona_key, messages, s, temperature=None) -> str:
@@ -133,8 +145,8 @@ def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
     persona = personas.get(persona_key)
 
     # 안전 판단이 먼저다. 위기면 검색·근거 구절을 쓰지 않는다 (구절에서 죽음의 수사를 끌어올 수 있다)
-    safety, how = _is_crisis(question)
-    cult = not safety and bool(CULT_PATTERNS.search(question))
+    label, how = _classify(question)
+    safety, cult = label == "위기", label == "미혹"
     open_ = False           # 근거 구절이 없어 "직접 다룬 문제가 아니다" + 찬반으로 답하는 경우
     must = None             # 답변에 반드시 들어가야 할 말 (guard 가 확인)
     if safety:
@@ -144,7 +156,7 @@ def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
     else:
         if cult:
             kept = retriever.find(persona_key, CULT_NEEDLES[persona_key], question)
-            log.info("[%s] 사이비 경로 — 고정 구절 %d개", persona_key, len(kept))
+            log.info("[%s] 사이비 경로 (%s) — 고정 구절 %d개", persona_key, how, len(kept))
             if persona_key == "jesus":
                 must = "거짓 선지자"
         else:
