@@ -21,13 +21,24 @@ USER_TEMPLATE = """구절:
 
 # 근거 구절이 하나도 없을 때 (2026-10-12 사용자 결정으로 바꿈, CLAUDE.md 6.21).
 # 예전엔 "다룬 적 없다"로 멈췄다(6.9) — 비용은 드는데 답을 못 들었다. 이제는 "직접 다룬 문제가 아니다"라는
-# 첫 문장(personas.open_line)을 코드가 그대로 붙여 지어낸 말이 아님을 먼저 밝히고, 그 사람의 관점에서 찬반 양쪽을 말한다.
-# 온도는 settings.llm_temperature_open 으로 올린다.
-NO_CONTEXT = """질문: {question}
+# 첫 문장(personas.open_line)을 코드가 그대로 붙여 지어낸 말이 아님을 먼저 밝힌다. 온도는 settings.llm_temperature_open.
+# 처음엔 "찬성 하나·반대 하나"를 시켰더니 예수가 "이 세상의 영생"을 선하다 하는, 교리와 정면으로 어긋나는 쪽까지 편들었다.
+# 그래서 (사용자 결정 2026-10-12)
+#  ① 반대편은 "세상 사람들의 생각"으로 소개하고 "그러나 나는"으로 자기 가르침을 말하게 한다
+#    (마 5:21 "너희가 들었으나 나는 너희에게 이르노니" 꼴. 니까야의 "어떤 사문·바라문들은 … 그러나 나는" 도 같은 꼴)
+#  ② 기준선(MIN_SCORE) 아래라도 가까운 구절(open_min_score 이상)을 같이 준다 — 피터 틸 영생 질문의 검색 1위
+#    막 8:35 "제 목숨을 구원하고자 하면 잃을 것이요"가 0.422 라 버려졌었다.
+NO_CONTEXT = """{near}질문: {question}
 
-이 질문에 맞는 구절이 없다. "직접 다룬 문제가 아니다"라는 첫 문장은 이미 앞에 붙는다. 다시 쓰지 말고 바로 이어서,
-네 관점에서 찬성하는 생각과 반대하는 생각을 하나씩 말하라. 어느 쪽으로도 결론 내리지 마라.
-있지도 않은 네 말을 인용하지 마라. 구체적인 투자·의료·법률 지시는 하지 마라."""
+이 질문에 바로 답하는 구절은 없다. "직접 다룬 문제가 아니다"라는 첫 문장은 이미 앞에 붙는다. 다시 쓰지 말고 바로 이어서,
+세상 사람들의 생각을 먼저 말하고, "그러나 나는"으로 네 가르침에 비춘 생각을 말하라. 네 가르침과 어긋나는 생각을 네 것으로 말하지 마라.
+{near_rule}있지도 않은 네 말을 인용하지 마라. 구체적인 투자·의료·법률 지시는 하지 마라."""
+
+NEAR_BLOCK = """가까운 구절:
+{passages}
+
+"""
+NEAR_RULE = "가까운 구절 가운데 질문과 맞는 것이 있으면 그 뜻에 기대라. 맞지 않는 구절은 쓰지 마라.\n"
 
 # ── 사이비·이단 (2026-10-12 사용자 결정) ──
 # 이런 질문은 찬반을 나누지 않고 무조건 경계하게 한다. 근거 구절은 검색이 아니라 문구로 고른다
@@ -93,6 +104,17 @@ def _classify(question: str) -> tuple[str, str]:
     return "일반", "llm"
 
 
+def _passages(hits) -> str:
+    return "\n\n".join(
+        PASSAGE_TEMPLATE.format(
+            n=i,
+            work=h["work"],
+            ref=retriever.ref_label(h),
+            title=h["division_title"] or f"{h['division']}장",
+            text=h["text"])
+        for i, h in enumerate(hits, 1))
+
+
 def _invoke(persona_key, messages, s, temperature=None) -> str:
     """LLM 을 한 번 호출하고 본문만 돌려준다. 잘렸거나 한국어가 아니면 예외."""
     from .llm import get_llm
@@ -155,6 +177,7 @@ def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
         user = SAFETY_TEMPLATE.format(question=question)
     else:
         if cult:
+            hits = []
             kept = retriever.find(persona_key, CULT_NEEDLES[persona_key], question)
             log.info("[%s] 사이비 경로 (%s) — 고정 구절 %d개", persona_key, how, len(kept))
             if persona_key == "jesus":
@@ -166,20 +189,19 @@ def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
                      persona_key, len(hits), len(kept),
                      hits[0]["score"] if hits else 0.0)
         if kept:
-            passages = "\n\n".join(
-                PASSAGE_TEMPLATE.format(
-                    n=i,
-                    work=h["work"],
-                    ref=retriever.ref_label(h),
-                    title=h["division_title"] or f"{h['division']}장",
-                    text=h["text"])
-                for i, h in enumerate(kept, 1))
-            user = USER_TEMPLATE.format(passages=passages, question=question)
+            user = USER_TEMPLATE.format(passages=_passages(kept), question=question)
             if cult:
                 user += CULT_NOTE.format(cult_line=persona.cult_line)
         else:
             open_ = True
-            user = NO_CONTEXT.format(question=question)
+            # 모델에게만 준다. sources 에는 넣지 않는다 — 앱이 "근거 구절 없음"과 "근거 구절 N개"를 함께 띄우게 된다
+            near = [h for h in hits if h["score"] >= s.open_min_score][:s.open_top_k]
+            log.info("[%s] 근거 없음 경로 — 가까운 구절 %d개 (%s)", persona_key, len(near),
+                     ", ".join(f"{retriever.ref_label(h)} {h['score']:.3f}" for h in near))
+            user = NO_CONTEXT.format(
+                near=NEAR_BLOCK.format(passages=_passages(near)) if near else "",
+                near_rule=NEAR_RULE if near else "",
+                question=question)
 
     answer_text, retries = _generate(
         persona_key, persona, user, safety, s,

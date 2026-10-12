@@ -89,7 +89,7 @@ def test_no_context_opens_with_fixed_line_then_pro_and_con(client, fake, monkeyp
     assert "공생애" in opener
     assert body["grounded"] is False and body["sources"] == []
     assert f.temps == [get_settings().llm_temperature_open]           # 온도를 올려 부른다
-    assert "찬성하는 생각과 반대하는 생각" in f.prompts[0]
+    assert "그러나 나는" in f.prompts[0] and "가까운 구절" not in f.prompts[0]   # 세상의 생각 → 나의 가르침
 
 
 def test_no_context_retries_when_model_repeats_the_opener(client, fake, monkeypatch):
@@ -168,3 +168,28 @@ def test_ordinary_prophet_question_stays_normal(client, fake, monkeypatch):
     fake(PRO_CON)
     _ask(client, "jesus", "세례 요한은 선지자입니까?")
     assert called.get("search")
+
+
+def _hit(ref, score, text):
+    a, b = ref.split("~") if "~" in ref else (ref, ref)
+    return {"chunk_id": f"jesus#{ref}", "work": "THE GOSPEL ACCORDING TO MARK", "ref_start": a, "ref_end": b,
+            "division": 8, "division_title": "", "text": text, "score": score}
+
+
+def test_no_context_gives_near_passages_to_the_model_only(client, fake, monkeypatch):
+    """기준선 아래라도 가까운 구절(0.40 이상)은 모델에게 준다. 앱의 sources 에는 넣지 않는다 (사용자 결정 2026-10-12)."""
+    hits = [_hit("8:35~8:38", 0.422, "For whosoever will save his life shall lose it"),
+            _hit("24:20~24:35", 0.421, "But pray ye that your flight be not in the winter"),
+            _hit("9:1~9:17", 0.418, "Verily I say unto you"),
+            _hit("6:32~6:34", 0.414, "Take therefore no thought for the morrow"),
+            _hit("5:1~5:20", 0.380, "unclean spirit")]
+    monkeypatch.setattr(retriever, "search", lambda *a, **k: hits)
+    f = fake(PRO_CON)
+    body = _ask(client, "jesus", "피터 틸이 이 세상에서의 영생을 이루려고 한다는데 어떻게 보십니까?")
+    p = f.prompts[0]
+    assert "가까운 구절:" in p and "save his life shall lose it" in p
+    assert "Take therefore no thought" not in p          # 3개까지만
+    assert "unclean spirit" not in p                     # 0.40 미만은 안 준다
+    assert "맞지 않는 구절은 쓰지 마라" in p
+    assert body["grounded"] is False and body["sources"] == []
+    assert body["answer"].startswith(personas.get("jesus").open_line)

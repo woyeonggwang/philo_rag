@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     # 검색
     top_k: int = 5
     min_score: float = 0.45               # 이보다 낮으면 근거 없음으로 본다 (2026-09-16 실측: 관련 0.49+, 무관 0.40-)
+    # 근거 없음 경로에서 "가까운 구절"로 모델에게만 주는 문턱과 개수 (CLAUDE.md 6.21, 2026-10-12)
+    open_min_score: float = 0.40
+    open_top_k: int = 3
 
     # 요금제 (plans.py). 로그인이 없어 모든 사용자가 이 요금제를 받는다.
     # 테스트 단계라 pro(무제한). personal 로 바꾸면 하루 5건 제한이 걸린다
