@@ -78,6 +78,11 @@ def test_every_persona_has_open_line_in_its_prompt():
     for p in personas.listed():
         assert p.open_line and p.open_line in p.system
         assert p.cult_line
+        # 첫 문장에는 "찬반"이 없다 — 찬반이 필요 없는 질문도 있다 (포켓몬, 2026-10-12)
+        assert "찬반" not in p.open_line
+        # 자기 삶·행적을 묻는 질문에는 "가르친 바가 아니니라"를 쓰지 않는다 (십자가의 무게, 2026-10-12)
+        assert "네 삶과 행적을 물으면 네가 겪은 일로 답한다" in p.system
+        assert "취향·잡담이면 한두 문장으로" in p.system
 
 
 def test_no_context_opens_with_fixed_line_then_pro_and_con(client, fake, monkeypatch):
@@ -90,6 +95,7 @@ def test_no_context_opens_with_fixed_line_then_pro_and_con(client, fake, monkeyp
     assert body["grounded"] is False and body["sources"] == []
     assert f.temps == [get_settings().llm_temperature_open]           # 온도를 올려 부른다
     assert "그러나 나는" in f.prompts[0] and "가까운 구절" not in f.prompts[0]   # 세상의 생각 → 나의 가르침
+    assert "찬반 없이 한두 문장으로" in f.prompts[0]                              # 잡담에는 찬반 없이
 
 
 def test_no_context_retries_when_model_repeats_the_opener(client, fake, monkeypatch):
