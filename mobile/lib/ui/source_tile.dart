@@ -4,9 +4,10 @@
 /// http 를 직접 쓰지 않는다 (CLAUDE.md 13절).
 library;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../api/models.dart';
+import 'keep_words.dart';
 
 class SourcesSection extends StatelessWidget {
   final List<Source> sources;

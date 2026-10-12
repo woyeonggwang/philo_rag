@@ -15,6 +15,8 @@ import 'package:philo_rag/state/chat_storage.dart';
 import 'package:philo_rag/ui/chat_screen.dart';
 import 'package:philo_rag/ui/incognito_icon.dart';
 
+import 'text_finders.dart';
+
 /// 서버로 간 신고 (POST /reports 본문)
 final _reports = <Map<String, dynamic>>[];
 
@@ -115,7 +117,7 @@ void main() {
           ),
         ),
       ));
-      await t.tap(find.text('열기'));
+      await t.tap(findText('열기'));
       await t.pumpAndSettle();
       return chat;
     }
@@ -130,16 +132,16 @@ void main() {
       final chat = await pump(t);
       await ask(t, '첫째');
       await ask(t, '둘째');
-      await t.longPress(find.text('답: 첫째'));
+      await t.longPress(findText('답: 첫째'));
       await t.pumpAndSettle();
       await t.tap(find.byKey(const ValueKey('menu-delete')));
       await t.pumpAndSettle();
-      expect(find.text('이 질문과 답을 지울까요?'), findsOneWidget);
+      expect(findText('이 질문과 답을 지울까요?'), findsOneWidget);
       await t.tap(find.widgetWithText(FilledButton, '지우기'));
       await t.pumpAndSettle();
-      expect(find.text('첫째'), findsNothing);
-      expect(find.text('답: 첫째'), findsNothing);
-      expect(find.text('답: 둘째'), findsOneWidget);
+      expect(findText('첫째'), findsNothing);
+      expect(findText('답: 첫째'), findsNothing);
+      expect(findText('답: 둘째'), findsOneWidget);
       expect(_texts(chat), ['둘째', '답: 둘째']);
     });
 
@@ -149,18 +151,18 @@ void main() {
       await t.tap(find.byKey(const Key('secret')));
       await t.pumpAndSettle();
       expect(find.byKey(const Key('secret-banner')), findsOneWidget);
-      expect(find.text('예수 · 시크릿'), findsOneWidget);
+      expect(findText('예수 · 시크릿'), findsOneWidget);
       expect(find.byType(IncognitoIcon), findsWidgets); // 모자·안경 아이콘
       // 크롬 시크릿 창처럼 어두운 화면
       expect(Theme.of(t.element(find.byKey(const Key('secret-banner')))).brightness, Brightness.dark);
-      expect(find.text('저장되는 질문'), findsNothing);
+      expect(findText('저장되는 질문'), findsNothing);
 
       await ask(t, '남기기 싫은 질문');
-      expect(find.text('답: 남기기 싫은 질문'), findsOneWidget);
+      expect(findText('답: 남기기 싫은 질문'), findsOneWidget);
       await t.tap(find.byKey(const Key('secret'))); // 끄기 — 시크릿 대화가 있으니 확인
       await t.pumpAndSettle();
-      expect(find.text('시크릿 모드를 끌까요?'), findsOneWidget);
-      await t.tap(find.text('취소'));
+      expect(findText('시크릿 모드를 끌까요?'), findsOneWidget);
+      await t.tap(findText('취소'));
       await t.pumpAndSettle();
       expect(chat.isSecret('jesus'), isTrue);
 
@@ -173,14 +175,14 @@ void main() {
     testWidgets('메뉴: 답에는 삭제·복사·신고, 질문에는 삭제만', (t) async {
       await pump(t);
       await ask(t, '첫째');
-      await t.longPress(find.text('답: 첫째'));
+      await t.longPress(findText('답: 첫째'));
       await t.pumpAndSettle();
       for (final k in ['delete', 'copy', 'report']) {
         expect(find.byKey(ValueKey('menu-$k')), findsOneWidget);
       }
       await t.tapAt(const Offset(5, 5)); // 메뉴 닫기
       await t.pumpAndSettle();
-      await t.longPress(find.text('첫째'));
+      await t.longPress(findText('첫째'));
       await t.pumpAndSettle();
       expect(find.byKey(const ValueKey('menu-delete')), findsOneWidget);
       expect(find.byKey(const ValueKey('menu-copy')), findsNothing);
@@ -196,28 +198,28 @@ void main() {
       addTearDown(() => t.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
       await pump(t);
       await ask(t, '첫째');
-      await t.longPress(find.text('답: 첫째'));
+      await t.longPress(findText('답: 첫째'));
       await t.pumpAndSettle();
       await t.tap(find.byKey(const ValueKey('menu-copy')));
       await t.pumpAndSettle();
       expect(copied, '답: 첫째');
-      expect(find.text('답변을 복사했습니다'), findsOneWidget);
+      expect(findText('답변을 복사했습니다'), findsOneWidget);
     });
 
     testWidgets('신고: 사유를 고르고 대화 내용 제공에 동의하면 질문·답과 함께 보낸다. 기타는 직접 적어야 한다', (t) async {
       _reports.clear();
       await pump(t);
       await ask(t, '첫째');
-      await t.longPress(find.text('답: 첫째'));
+      await t.longPress(findText('답: 첫째'));
       await t.pumpAndSettle();
       await t.tap(find.byKey(const ValueKey('menu-report')));
       await t.pumpAndSettle();
-      expect(find.text('예수의 사상과 맞지 않음'), findsOneWidget);
-      expect(find.text('폭력적인 발화'), findsOneWidget);
+      expect(findText('예수의 사상과 맞지 않음'), findsOneWidget);
+      expect(findText('폭력적인 발화'), findsOneWidget);
       FilledButton send() => t.widget<FilledButton>(find.byKey(const Key('report-send')));
       expect(send().onPressed, isNull); // 고르기 전
 
-      await t.tap(find.text('기타 (직접 입력)'));
+      await t.tap(findText('기타 (직접 입력)'));
       await t.pumpAndSettle();
       expect(send().onPressed, isNull); // 기타는 내용이 있어야
       await t.enterText(find.byKey(const Key('report-detail')), '말투가 이상합니다');
@@ -231,7 +233,7 @@ void main() {
       await t.tap(find.byKey(const Key('report-send')));
       await t.pumpAndSettle();
 
-      expect(find.text('신고가 접수되었습니다. 검토하겠습니다.'), findsOneWidget);
+      expect(findText('신고가 접수되었습니다. 검토하겠습니다.'), findsOneWidget);
       expect(_reports.single['reason'], '기타');
       expect(_reports.single['detail'], '말투가 이상합니다');
       expect(_reports.single['question'], '첫째');

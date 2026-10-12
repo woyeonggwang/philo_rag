@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:philo_rag/api/models.dart';
 import 'package:philo_rag/ui/source_tile.dart';
 
+import 'text_finders.dart';
+
 const _sources = [
   Source(
     chunkId: 'jesus#3',
@@ -31,16 +33,16 @@ void main() {
   testWidgets('헤더만 보이고, 누르면 한글 작품명 목록이 펼쳐진다', (tester) async {
     await tester.pumpWidget(_app(const SourcesSection(sources: _sources)));
 
-    expect(find.text('근거 구절 2개'), findsOneWidget);
-    expect(find.text('1. 마태복음 3:1~3:15'), findsNothing);
+    expect(findText('근거 구절 2개'), findsOneWidget);
+    expect(findText('1. 마태복음 3:1~3:15'), findsNothing);
 
-    await tester.tap(find.text('근거 구절 2개'));
+    await tester.tap(findText('근거 구절 2개'));
     await tester.pumpAndSettle();
 
-    expect(find.text('1. 마태복음 3:1~3:15'), findsOneWidget);
-    expect(find.text('2. 누가복음 4:34~4:44'), findsOneWidget);
+    expect(findText('1. 마태복음 3:1~3:15'), findsOneWidget);
+    expect(findText('2. 누가복음 4:34~4:44'), findsOneWidget);
     // 영어 제목은 화면에 안 나온다
-    expect(find.textContaining('GOSPEL ACCORDING'), findsNothing);
+    expect(findTextContaining('GOSPEL ACCORDING'), findsNothing);
     // 줄은 펼쳐지는 타일이 아니다 (헤더 하나만 ExpansionTile)
     expect(find.byType(ExpansionTile), findsOneWidget);
   });
@@ -49,11 +51,11 @@ void main() {
     await tester.pumpWidget(
         _app(const SourcesSection(sources: _sources, initiallyExpanded: true)));
     await tester.pumpAndSettle();
-    expect(find.text('1. 마태복음 3:1~3:15'), findsOneWidget);
+    expect(findText('1. 마태복음 3:1~3:15'), findsOneWidget);
 
-    await tester.tap(find.text('근거 구절 2개'));
+    await tester.tap(findText('근거 구절 2개'));
     await tester.pumpAndSettle();
-    expect(find.text('1. 마태복음 3:1~3:15'), findsNothing);
+    expect(findText('1. 마태복음 3:1~3:15'), findsNothing);
   });
 
   test('Source.fromJson — work_ko 가 없으면 영어 제목으로 대신한다', () {

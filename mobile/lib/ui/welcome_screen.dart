@@ -1,7 +1,8 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart' hide Text;
 
-import 'ink_portrait_background.dart';
 import 'comma_mark.dart';
+import 'ink_portrait_background.dart';
+import 'keep_words.dart';
 
 /// 처음 한 번 보이는 소개. 화면 어디든 누르면 기존 시작 동작을 실행한다.
 class WelcomeScreen extends StatefulWidget {

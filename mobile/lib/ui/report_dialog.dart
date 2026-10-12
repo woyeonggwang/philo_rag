@@ -3,7 +3,9 @@
 /// 대화 내용이 개발자에게 제공된다는 데 동의해야 보낼 수 있다 (사용자 결정 2026-10-12).
 library;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
+
+import 'keep_words.dart';
 
 /// 신고 사유. 첫 줄은 대화 상대의 이름이 들어간다.
 List<String> reportReasons(String personaName) => [

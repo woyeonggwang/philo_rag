@@ -17,6 +17,8 @@ import 'package:philo_rag/ui/persona_detail_screen.dart';
 import 'package:philo_rag/ui/persona_grid_screen.dart' show PersonaVisual;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'text_finders.dart';
+
 class _Auth implements AuthBackend {
   final _users = StreamController<AppUser?>.broadcast();
   int signOuts = 0;
@@ -99,7 +101,7 @@ void main() {
     await _pump(t);
     expect(find.byType(NavigationBar), findsOneWidget);
     for (final label in ['대화', '소개', '설정']) {
-      expect(find.text(label), findsOneWidget);
+      expect(findText(label), findsOneWidget);
     }
     expect(find.byKey(const ValueKey('persona-jesus')), findsOneWidget);
   });
@@ -117,54 +119,54 @@ void main() {
 
   testWidgets('소개 탭: 한 화면에 한 명, 밀면 다음 철학자, 누르면 사상·서적 페이지', (t) async {
     await _pump(t);
-    await t.tap(find.text('소개'));
+    await t.tap(findText('소개'));
     await t.pumpAndSettle();
     expect(find.byType(PageView), findsOneWidget);
-    expect(find.text('니체'), findsOneWidget);
-    expect(find.textContaining('망치를 든 철학자'), findsOneWidget);
+    expect(findText('니체'), findsOneWidget);
+    expect(findTextContaining('망치를 든 철학자'), findsOneWidget);
 
     await t.drag(find.byType(PageView), const Offset(-300, 0)); // 다음 철학자로
     await t.pumpAndSettle();
-    expect(find.textContaining('공관복음의 목소리'), findsOneWidget);
+    expect(findTextContaining('공관복음의 목소리'), findsOneWidget);
 
     await t.tap(find.byKey(const ValueKey('intro-jesus')));
     await t.pumpAndSettle();
     expect(find.byType(PersonaDetailScreen), findsOneWidget);
     expect(find.byType(NavigationBar), findsNothing);
-    expect(find.text('사상'), findsOneWidget);
-    expect(find.textContaining('예수 그리스도'), findsOneWidget);
-    expect(find.textContaining('유대 베들레헴'), findsOneWidget);
-    expect(find.textContaining('나사렛 예수'), findsNothing);
+    expect(findText('사상'), findsOneWidget);
+    expect(findTextContaining('예수 그리스도'), findsOneWidget);
+    expect(findTextContaining('유대 베들레헴'), findsOneWidget);
+    expect(findTextContaining('나사렛 예수'), findsNothing);
 
     final visual = find.descendant(of: find.byType(PersonaDetailScreen), matching: find.byType(PersonaVisual));
     final top = t.getTopLeft(visual).dy;
-    await t.scrollUntilVisible(find.text('요한복음'), 300, scrollable: find.byType(Scrollable).last);
-    expect(find.text('마태복음'), findsOneWidget);
-    expect(find.text('요한복음'), findsOneWidget);
+    await t.scrollUntilVisible(findText('요한복음'), 300, scrollable: find.byType(Scrollable).last);
+    expect(findText('마태복음'), findsOneWidget);
+    expect(findText('요한복음'), findsOneWidget);
     expect(t.getTopLeft(visual).dy, top); // 글을 넘겨도 일러스트는 제자리
   });
 
   testWidgets('설정 탭: 테마·글씨 크기를 바꾸면 저장되고, 계정·남은 사용량이 보이고, 결제는 비활성', (t) async {
     final (settings, backend) = await _pump(t);
-    await t.tap(find.text('설정'));
+    await t.tap(findText('설정'));
     await t.pumpAndSettle();
 
     expect(settings.themeMode, ThemeMode.dark); // 기본 다크
-    await t.tap(find.text('라이트'));
+    await t.tap(findText('라이트'));
     await t.pumpAndSettle();
     expect(settings.themeMode, ThemeMode.light);
 
-    await t.tap(find.text('크게'));
+    await t.tap(findText('크게'));
     await t.pumpAndSettle();
     expect(settings.textSize, TextSize.large);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('theme_mode'), 'light');
     expect(prefs.getString('text_size'), 'large');
 
-    expect(find.text('me@example.com'), findsOneWidget);
-    expect(find.textContaining('Google 계정'), findsOneWidget);
-    expect(find.text('Personal 요금제'), findsOneWidget);
-    expect(find.textContaining('오늘 2 / 5건 사용 · 3건 남음'), findsOneWidget);
+    expect(findText('me@example.com'), findsOneWidget);
+    expect(findTextContaining('Google 계정'), findsOneWidget);
+    expect(findText('Personal 요금제'), findsOneWidget);
+    expect(findTextContaining('오늘 2 / 5건 사용 · 3건 남음'), findsOneWidget);
 
     await t.scrollUntilVisible(find.byKey(const Key('pay')), 200, scrollable: find.byType(Scrollable).last);
     expect(t.widget<FilledButton>(find.byKey(const Key('pay'))).onPressed, isNull); // 비활성
@@ -188,22 +190,22 @@ void main() {
 
   testWidgets('일반 사용자에게는 신고 내역이 보이지 않는다', (t) async {
     await _pump(t);
-    await t.tap(find.text('설정'));
+    await t.tap(findText('설정'));
     await t.pumpAndSettle();
     expect(find.byKey(const Key('reports')), findsNothing);
   });
 
   testWidgets('개발자에게는 신고 내역이 보이고, 누르면 질문·답과 함께 목록이 열린다', (t) async {
     await _pump(t, admin: true);
-    await t.tap(find.text('설정'));
+    await t.tap(findText('설정'));
     await t.pumpAndSettle();
     await t.scrollUntilVisible(find.byKey(const Key('reports')), 200, scrollable: find.byType(Scrollable).last);
     await t.tap(find.byKey(const Key('reports')));
     await t.pumpAndSettle();
-    expect(find.text('예수 · 예수의 사상과 맞지 않음'), findsOneWidget);
-    await t.tap(find.text('예수 · 예수의 사상과 맞지 않음'));
+    expect(findText('예수 · 예수의 사상과 맞지 않음'), findsOneWidget);
+    await t.tap(findText('예수 · 예수의 사상과 맞지 않음'));
     await t.pumpAndSettle();
-    expect(find.text('바람직한 삶이란?'), findsOneWidget);
-    expect(find.text('보라, 먼저 하나님의 나라를 구하라.'), findsOneWidget);
+    expect(findText('바람직한 삶이란?'), findsOneWidget);
+    expect(findText('보라, 먼저 하나님의 나라를 구하라.'), findsOneWidget);
   });
 }

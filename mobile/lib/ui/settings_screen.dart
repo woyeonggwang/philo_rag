@@ -4,13 +4,14 @@
 library;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../api/client.dart';
 import '../api/models.dart';
 import '../state/auth.dart';
 import '../state/settings.dart';
 import 'reports_screen.dart';
+import 'keep_words.dart';
 import 'app_theme.dart';
 
 class SettingsScreen extends StatefulWidget {

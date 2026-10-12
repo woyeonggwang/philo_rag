@@ -998,7 +998,9 @@ Gemini 가 제안한 "뗏목 비유"(MN 22)는 **코퍼스에 없어** 넣으면
 2. **guard: 답에 "구절"이 있으면 다시 쓰게** 한다 — "시스템이 준 재료를 드러내지 말고 네 말과 네 글로 말하라"
 
 검증 `backend/tests/test_concepts.py` 13개 (보강 10가지·경계 / 검색어는 보강, 모델엔 원래 질문 / "구절" 나오면 재생성 / guard). 백엔드 전체 56개.
-**실제 호출로 아모르파티를 다시 확인하지는 않았다** `[확인필요]`. 사전에 없는 개념어는 여전히 못 잡는다 — 생기면 같은 방법으로 재서 늘린다.
+**확인 (사용자가 앱에서 다시 물음, 2026-10-12)**: 「아모르파티란 무엇인가요」 → 근거 구절 5개, "아모르 파티는 운명을 사랑한다는 뜻이다 …
+필연을 그저 견디거나 숨기는 데 그치지 말고, 그것을 사랑해야 한다" — 이 사람을 보라 2:10 ("Not only must the necessary be borne, and on no account concealed, … but it must also be loved") 그대로.
+사전에 없는 개념어는 여전히 못 잡는다 — 생기면 같은 방법으로 재서 늘린다.
 
 ## 7. 파싱 함정 — 반드시 기억할 것
 
@@ -1481,6 +1483,16 @@ mobile/lib/
   **"근거 구절 N개" 한 줄만 보이고 기본은 접힘**, 누르면 "1. 마태복음 3:1~3:15" (한글 작품명 + 위치) 목록이 펼쳐진다.
   **각 줄은 누를 수 없고 본문도 보여주지 않는다** (사용자 결정). 서버 호출 없음. Codex 가 정식 UI 를 만들 때 그대로 쓰거나 디자인만 바꾸면 된다.
   `ExpansionTile` 에 `PageStorageKey` 를 주면 안 된다 — 안쪽에 스크롤 위젯이 있으면 저장 슬롯이 겹쳐 형 오류가 난다 (위젯 테스트로 재현했었다)
+- **한글 낱말이 줄 끝에서 쪼개지지 않게 (2026-10-12, 사용자 요청 — "아모르파 / 티" 처럼 끊기지 않게)**: Flutter 는 한글을 글자 단위로
+  줄바꿈하고 CSS `word-break: keep-all` 같은 설정이 없다 (3.47 SDK 에서 확인). `lib/ui/keep_words.dart` 가 띄어쓰기가 있는 글의 각 낱말
+  글자 사이에 보이지 않는 단어 잇기 문자(U+2060)를 넣어 띄어쓰기에서만 줄이 바뀌게 한다.
+  **화면 파일은 Flutter 의 Text 대신 이 Text 를 쓴다** — `import 'package:flutter/material.dart' hide Text;` + `import 'keep_words.dart';`.
+  **새 화면을 만들 때도 이렇게 할 것 (Codex 포함).** 이렇게 하면 기존·새 Text 가 모두 자동으로 적용된다. SelectableText 는 `keepWords(...)` 로 감싼다.
+  한 낱말짜리(버튼·탭 이름)와 25자 넘는 덩어리(주소 등 — 줄보다 길면 끊겨야 함)는 그대로, 화면 낭독기에는 원래 글, 대화 복사는 원래 문자열(`bubbleText`).
+  입력칸(TextField)의 글은 손대지 않는다 (사용자가 친 글에 문자를 넣을 수 없다). `Text.rich` 는 그대로 넘긴다 (짧은 제목에만 쓰임).
+  테스트는 `find.text` 대신 `test/text_finders.dart` 의 `findText`/`findTextContaining` (그 문자를 빼고 비교).
+  검증 `test/keep_words_test.dart` — 좁은 폭에서 줄이 띄어쓰기에서만 바뀌고, 처리하지 않은 글은 낱말 가운데서 끊긴다는 것까지 잰다. 앱 테스트 전체 45개.
+  에뮬레이터에서 대화창·첫 화면·로그인 화면 확인 (빈 네모 같은 깨진 글자 없음)
 - 패키지: `http`, `shared_preferences`. 상태 관리 패키지(provider/riverpod)는 안 썼다 — `ChangeNotifier` + `AnimatedBuilder` 로 충분한 규모.
   Codex 가 UI 를 만들 때 원하면 그때 붙인다
 

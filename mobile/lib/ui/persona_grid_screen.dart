@@ -7,7 +7,7 @@ library;
 
 import 'dart:ui' as ui;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 
 import '../api/client.dart';
@@ -16,6 +16,7 @@ import '../state/auth.dart';
 import '../state/chat.dart';
 import '../state/settings.dart';
 import 'chat_screen.dart';
+import 'keep_words.dart';
 import 'comma_mark.dart';
 import 'portrait_ink.dart';
 import 'app_theme.dart';

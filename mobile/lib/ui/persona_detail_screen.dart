@@ -2,11 +2,12 @@
 /// 탭을 덮는 전체 화면이다. 디자인은 Codex 몫.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../data/persona_profiles.dart';
 import 'persona_grid_screen.dart' show PersonaVisual;
 import 'app_theme.dart';
+import 'keep_words.dart';
 
 class PersonaDetailScreen extends StatelessWidget {
   final PersonaProfile profile;
@@ -22,7 +23,15 @@ class PersonaDetailScreen extends StatelessWidget {
 
   Widget _buildContent(BuildContext context) {
     final theme = Theme.of(context);
-    final t = theme.textTheme;
+    final base = theme.textTheme;
+    final t = base.copyWith(
+      titleLarge: base.titleLarge?.copyWith(fontSize: 24, fontWeight: FontWeight.w700, height: 1.35),
+      titleSmall: base.titleSmall?.copyWith(fontSize: 20, fontWeight: FontWeight.w700, height: 1.4),
+      titleMedium: base.titleMedium?.copyWith(fontSize: 18, height: 1.6),
+      bodyMedium: base.bodyMedium?.copyWith(fontSize: 16, height: 1.65),
+      bodyLarge: base.bodyLarge?.copyWith(fontSize: 16, fontWeight: FontWeight.w500, height: 1.5),
+      bodySmall: base.bodySmall?.copyWith(fontSize: 13, height: 1.55),
+    );
     final p = profile;
     // 일러스트는 위에 고정하고 글만 스크롤한다 — 글이 일러스트 밑으로 들어가며 흐려진다 (사용자 요청 2026-10-12)
     final visualHeight = (MediaQuery.sizeOf(context).height * 0.28).clamp(
@@ -30,7 +39,9 @@ class PersonaDetailScreen extends StatelessWidget {
       260.0,
     );
     return Scaffold(
-      appBar: AppBar(title: Text(p.name, style: const TextStyle(fontFamily: 'GowunBatang'))),
+      appBar: AppBar(title: Text(p.name, style: const TextStyle(
+        fontFamily: 'GowunBatang', fontSize: 26, fontWeight: FontWeight.w700,
+      ))),
       body: Column(
         children: [
           SizedBox(
@@ -67,20 +78,20 @@ class PersonaDetailScreen extends StatelessWidget {
         Text(p.tagline, style: t.titleMedium?.copyWith(fontFamily: 'GowunBatang')),
         const SizedBox(height: 28),
         Text('사상', style: t.titleLarge?.copyWith(fontFamily: 'GowunBatang')),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         Text(p.summary, style: t.bodyMedium),
         const SizedBox(height: 16),
         for (final idea in p.ideas)
           Padding(
-            padding: const EdgeInsets.only(bottom: 14),
+            padding: const EdgeInsets.only(bottom: 22),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   idea.title,
-                  style: t.titleSmall?.copyWith(fontWeight: FontWeight.w600, fontFamily: 'GowunBatang'),
+                  style: t.titleSmall?.copyWith(fontFamily: 'GowunBatang'),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 8),
                 Text(idea.body, style: t.bodyMedium),
               ],
             ),

@@ -11,6 +11,8 @@ import 'package:philo_rag/ui/login_screen.dart';
 import 'package:philo_rag/ui/welcome_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'text_finders.dart';
+
 class FakeAuth implements AuthBackend {
   FakeAuth({this.available = true});
 
@@ -103,7 +105,7 @@ void main() {
     expect(find.byType(WelcomeScreen), findsOneWidget);
     await t.tapAt(const Offset(200, 120));
     await t.pump();
-    expect(find.text('HOME a@gmail.com'), findsOneWidget);
+    expect(findText('HOME a@gmail.com'), findsOneWidget);
     expect(find.byType(LoginScreen), findsNothing);
   });
 
@@ -123,7 +125,7 @@ void main() {
     await t.tap(find.byKey(const Key('google')));
     await t.pump();
     expect(backend.calls, ['google']);
-    expect(find.text('HOME a@gmail.com'), findsOneWidget);
+    expect(findText('HOME a@gmail.com'), findsOneWidget);
     expect(await auth.idToken(), 'token-of-current-user'); // 서버 요청에 붙는다
 
     await auth.signOut();
@@ -141,20 +143,20 @@ void main() {
     await t.tap(find.byKey(const Key('email-submit')));
     await t.pump();
     expect(backend.calls.last, 'email:me@example.com');
-    expect(find.text('HOME me@example.com'), findsOneWidget);
+    expect(findText('HOME me@example.com'), findsOneWidget);
   });
 
   testWidgets('가입하기로 바꾸면 가입을 부른다 · 짧은 비밀번호는 보내기 전에 막는다', (t) async {
     final (_, _, backend) = await _app(t, passTitle: true);
     backend.emit(null);
     await t.pump();
-    await t.tap(find.text('처음이신가요? 가입하기'));
+    await t.tap(findText('처음이신가요? 가입하기'));
     await t.pump();
     await t.enterText(find.byKey(const Key('email')), 'new@example.com');
     await t.enterText(find.byKey(const Key('password')), '123');
     await t.tap(find.byKey(const Key('email-submit')));
     await t.pump();
-    expect(find.text('비밀번호는 6자 이상이어야 합니다.'), findsOneWidget);
+    expect(findText('비밀번호는 6자 이상이어야 합니다.'), findsOneWidget);
     expect(backend.calls, isEmpty);
 
     await t.enterText(find.byKey(const Key('password')), '123456');
@@ -170,19 +172,19 @@ void main() {
     backend.failWith = const AuthFailure('이 로그인 방식이 아직 Firebase 콘솔에서 켜져 있지 않습니다.');
     await t.tap(find.byKey(const Key('apple')));
     await t.pump();
-    expect(find.text('이 로그인 방식이 아직 Firebase 콘솔에서 켜져 있지 않습니다.'), findsOneWidget);
+    expect(findText('이 로그인 방식이 아직 Firebase 콘솔에서 켜져 있지 않습니다.'), findsOneWidget);
     expect(find.byType(LoginScreen), findsOneWidget);
   });
 
   testWidgets('Firebase 설정 전: 경고를 보여 주고, 개발용 우회로 들어갈 수 있다 (토큰 없음)', (t) async {
     final (_, auth, _) = await _app(t, passTitle: true, available: false);
     await t.pump();
-    expect(find.textContaining('Firebase 설정 전'), findsOneWidget);
+    expect(findTextContaining('Firebase 설정 전'), findsOneWidget);
     await t.scrollUntilVisible(find.byKey(const Key('dev-skip')), 200,
         scrollable: find.byType(Scrollable).first); // 화면 맨 아래에 있다 (입력칸도 Scrollable 이라 목록을 지정)
     await t.tap(find.byKey(const Key('dev-skip')));
     await t.pump();
-    expect(find.text('HOME 개발용 (로그인 안 함)'), findsOneWidget);
+    expect(findText('HOME 개발용 (로그인 안 함)'), findsOneWidget);
     expect(await auth.idToken(), isNull); // 서버는 기기 ID 로 센다
     await auth.signOut();
     await t.pump();

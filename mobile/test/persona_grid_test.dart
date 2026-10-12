@@ -17,6 +17,8 @@ import 'package:philo_rag/ui/persona_grid_screen.dart';
 import 'package:philo_rag/ui/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'text_finders.dart';
+
 const _personas = [
   {'key': 'nietzsche', 'name': '니체', 'blurb': '망치를 든 철학자.', 'enabled': true},
   {'key': 'jesus', 'name': '예수', 'blurb': '복음서의 목소리.', 'enabled': true},
@@ -97,12 +99,12 @@ void main() {
     expect(find.byKey(const ValueKey('persona-jesus')), findsOneWidget);
     expect(find.byKey(const ValueKey('persona-buddha')), findsOneWidget);
     expect(find.byType(PersonaVisual), findsNWidgets(3));
-    expect(find.text('니체'), findsNothing);
-    expect(find.text('예수'), findsNothing);
-    expect(find.text('부처'), findsNothing);
-    expect(find.text('쉼표,'), findsNothing);
-    expect(find.text('숨김'), findsNothing);
-    expect(find.text('연결'), findsNothing);
+    expect(findText('니체'), findsNothing);
+    expect(findText('예수'), findsNothing);
+    expect(findText('부처'), findsNothing);
+    expect(findText('쉼표,'), findsNothing);
+    expect(findText('숨김'), findsNothing);
+    expect(findText('연결'), findsNothing);
     expect(find.byType(ChatScreen), findsNothing); // 대화창은 아직 안 열렸다
     await t.runAsync(() async {
       await Future<void>.delayed(const Duration(milliseconds: 400));
@@ -123,13 +125,13 @@ void main() {
     await t.tap(find.byKey(const ValueKey('persona-jesus')));
     await t.pumpAndSettle();
     expect(find.byType(ChatScreen), findsOneWidget);
-    expect(find.text('예수에게 물어보세요.'), findsOneWidget);
+    expect(findText('예수에게 물어보세요.'), findsOneWidget);
 
     await t.enterText(find.byKey(const Key('question')), '돈 걱정으로 잠이 안 옵니다');
     await t.tap(find.byKey(const Key('send')));
     await t.pumpAndSettle();
-    expect(find.text('돈 걱정으로 잠이 안 옵니다'), findsOneWidget);
-    expect(find.text('보라, 염려하지 말라.'), findsOneWidget);
+    expect(findText('돈 걱정으로 잠이 안 옵니다'), findsOneWidget);
+    expect(findText('보라, 염려하지 말라.'), findsOneWidget);
 
     await t.pageBack(); // 뒤로 가면 바둑판
     await t.pumpAndSettle();

@@ -3,10 +3,11 @@
 library;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../state/auth.dart';
 import 'app_theme.dart';
+import 'keep_words.dart';
 
 class LoginScreen extends StatefulWidget {
   final AuthController auth;

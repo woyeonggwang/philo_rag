@@ -2,12 +2,13 @@
 /// 서버가 .env 의 ADMIN_USERS 로 개발자인지 확인한다 (아니면 403). 최근 신고부터, 질문·답이 함께 보인다.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../api/client.dart';
 import '../api/models.dart';
 import '../data/persona_profiles.dart';
 import 'app_theme.dart';
+import 'keep_words.dart';
 
 class ReportsScreen extends StatefulWidget {
   final PhiloRagClient Function() client;
@@ -89,14 +90,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         children: [
                           if (r.detail != null) ...[
                             Text('직접 입력', style: theme.textTheme.labelMedium),
-                            SelectableText(r.detail!),
+                            SelectableText(keepWords(r.detail!)),
                             const SizedBox(height: 12),
                           ],
                           Text('질문', style: theme.textTheme.labelMedium),
-                          SelectableText(r.question.isEmpty ? '(질문 없음)' : r.question),
+                          SelectableText(keepWords(r.question.isEmpty ? '(질문 없음)' : r.question)),
                           const SizedBox(height: 12),
                           Text('답', style: theme.textTheme.labelMedium),
-                          SelectableText(r.answer),
+                          SelectableText(keepWords(r.answer)),
                         ],
                       );
                     },

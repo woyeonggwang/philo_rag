@@ -3,10 +3,11 @@
 /// 글은 앱에 넣어 둔 고정 글(data/persona_profiles.dart)이라 서버가 꺼져 있어도 보인다. 디자인은 Codex 몫.
 library;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../data/persona_profiles.dart';
 import 'persona_detail_screen.dart';
+import 'keep_words.dart';
 import 'persona_grid_screen.dart' show PersonaVisual;
 import 'app_theme.dart';
 
@@ -77,12 +78,17 @@ class _PersonaIntroScreenState extends State<PersonaIntroScreen> {
                               children: [
                                 Text(
                                   p.name,
-                                  style: theme.textTheme.headlineSmall?.copyWith(fontFamily: 'GowunBatang'),
+                                  style: theme.textTheme.headlineSmall?.copyWith(
+                                    fontFamily: 'GowunBatang', fontSize: 28,
+                                    fontWeight: FontWeight.w700, height: 1.3,
+                                  ),
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
                                   p.tagline,
-                                  style: theme.textTheme.bodyMedium?.copyWith(fontFamily: 'GowunBatang'),
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    fontFamily: 'GowunBatang', fontSize: 16, height: 1.6,
+                                  ),
                                 ),
                                 const SizedBox(height: 12),
                                 Row(

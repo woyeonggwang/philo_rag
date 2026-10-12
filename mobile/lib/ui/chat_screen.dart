@@ -4,7 +4,7 @@
 /// 위쪽 모자·안경 아이콘은 시크릿 모드 — 저장하지 않고, 이 화면을 나가면 사라진다. 켜면 화면이 어두워진다 (2026-10-12).
 library;
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 
 import '../api/client.dart';
@@ -12,6 +12,7 @@ import '../api/models.dart';
 import '../state/chat.dart';
 import 'app_theme.dart';
 import 'incognito_icon.dart';
+import 'keep_words.dart';
 import 'report_dialog.dart';
 import 'source_tile.dart';
 
