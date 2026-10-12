@@ -18,6 +18,7 @@ import '../state/settings.dart';
 import 'chat_screen.dart';
 import 'comma_mark.dart';
 import 'portrait_ink.dart';
+import 'app_theme.dart';
 
 class PersonaGridScreen extends StatefulWidget {
   final SettingsStore settings;
@@ -96,7 +97,10 @@ class _PersonaGridScreenState extends State<PersonaGridScreen> {
 
   void _open(Persona p) {
     Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => ChatScreen(persona: p, chat: widget.chat),
+      builder: (context) => Theme(
+        data: AppTheme.withDefaultFont(Theme.of(context)),
+        child: ChatScreen(persona: p, chat: widget.chat),
+      ),
     ));
   }
 

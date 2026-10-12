@@ -4,7 +4,7 @@ import re
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from . import glossary, guard, personas, retriever, works
+from . import concepts, glossary, guard, personas, retriever, works
 from .config import get_settings
 
 log = logging.getLogger(__name__)
@@ -187,7 +187,11 @@ def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
             if persona_key == "jesus":
                 must = "거짓 선지자"
         else:
-            hits = retriever.search(persona_key, question, top_k)
+            # 한글 개념어("아모르파티", "열반")는 원어를 덧붙여 찾는다 (concepts.py). 모델에게는 원래 질문을 준다
+            query = concepts.expand(persona_key, question)
+            if query != question:
+                log.info("[%s] 검색어 보강: %s", persona_key, query[len(question):].strip())
+            hits = retriever.search(persona_key, query, top_k)
             kept = [h for h in hits if h["score"] >= s.min_score]
             log.info("[%s] 검색 %d개 중 %d개 채택 (최고 %.3f)",
                      persona_key, len(hits), len(kept),

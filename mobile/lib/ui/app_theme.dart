@@ -5,6 +5,19 @@ abstract final class AppTheme {
   static ThemeData get dark => _build(Brightness.dark);
   static ThemeData get light => _build(Brightness.light);
 
+  /// 색상과 글씨 크기는 유지하며 플랫폼의 기존 기본 글꼴만 복원한다.
+  static ThemeData withDefaultFont(ThemeData theme) {
+    final defaults = ThemeData(
+      useMaterial3: theme.useMaterial3,
+      platform: theme.platform,
+      colorScheme: theme.colorScheme,
+    );
+    return theme.copyWith(
+      textTheme: theme.textTheme.apply(fontFamily: defaults.textTheme.bodyMedium!.fontFamily),
+      primaryTextTheme: theme.primaryTextTheme.apply(fontFamily: defaults.primaryTextTheme.bodyMedium!.fontFamily),
+    );
+  }
+
   static ThemeData _build(Brightness brightness) {
     final dark = brightness == Brightness.dark;
     final background = Color(dark ? 0xFF171717 : 0xFFF6F6F4);
@@ -47,7 +60,11 @@ abstract final class AppTheme {
       inversePrimary: background,
       surfaceTint: Colors.transparent,
     );
-    final base = ThemeData(useMaterial3: true, colorScheme: scheme);
+    final base = ThemeData(
+      useMaterial3: true,
+      colorScheme: scheme,
+      fontFamily: 'GowunBatang',
+    );
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(16),
       side: BorderSide(color: border),

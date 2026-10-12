@@ -15,6 +15,7 @@ import '../state/settings.dart';
 import 'persona_grid_screen.dart';
 import 'persona_intro_screen.dart';
 import 'settings_screen.dart';
+import 'app_theme.dart';
 
 class MainTabs extends StatefulWidget {
   final SettingsStore settings;
@@ -58,34 +59,40 @@ class _MainTabsState extends State<MainTabs> {
             client: widget.client,
           ),
           const PersonaIntroScreen(),
-          SettingsScreen(
-            settings: widget.settings,
-            auth: widget.auth,
-            client: widget.client,
-            refreshToken: _settingsVisits,
+          Theme(
+            data: AppTheme.withDefaultFont(Theme.of(context)),
+            child: SettingsScreen(
+              settings: widget.settings,
+              auth: widget.auth,
+              client: widget.client,
+              refreshToken: _settingsVisits,
+            ),
           ),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: _select,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.forum_outlined),
-            selectedIcon: Icon(Icons.forum),
-            label: '대화',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.auto_stories_outlined),
-            selectedIcon: Icon(Icons.auto_stories),
-            label: '소개',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: '설정',
-          ),
-        ],
+      bottomNavigationBar: Theme(
+        data: AppTheme.withDefaultFont(Theme.of(context)),
+        child: NavigationBar(
+          selectedIndex: _index,
+          onDestinationSelected: _select,
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.forum_outlined),
+              selectedIcon: Icon(Icons.forum),
+              label: '대화',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.auto_stories_outlined),
+              selectedIcon: Icon(Icons.auto_stories),
+              label: '소개',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.settings_outlined),
+              selectedIcon: Icon(Icons.settings),
+              label: '설정',
+            ),
+          ],
+        ),
       ),
     );
   }

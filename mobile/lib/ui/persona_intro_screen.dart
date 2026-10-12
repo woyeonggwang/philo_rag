@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../data/persona_profiles.dart';
 import 'persona_detail_screen.dart';
 import 'persona_grid_screen.dart' show PersonaVisual;
+import 'app_theme.dart';
 
 class PersonaIntroScreen extends StatefulWidget {
   const PersonaIntroScreen({super.key});
@@ -34,6 +35,13 @@ class _PersonaIntroScreenState extends State<PersonaIntroScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return Theme(
+      data: AppTheme.withDefaultFont(Theme.of(context)),
+      child: Builder(builder: _buildContent),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('철학자 소개')),
@@ -69,12 +77,12 @@ class _PersonaIntroScreenState extends State<PersonaIntroScreen> {
                               children: [
                                 Text(
                                   p.name,
-                                  style: theme.textTheme.headlineSmall,
+                                  style: theme.textTheme.headlineSmall?.copyWith(fontFamily: 'GowunBatang'),
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
                                   p.tagline,
-                                  style: theme.textTheme.bodyMedium,
+                                  style: theme.textTheme.bodyMedium?.copyWith(fontFamily: 'GowunBatang'),
                                 ),
                                 const SizedBox(height: 12),
                                 Row(

@@ -178,8 +178,11 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     // 시크릿 모드는 크롬 시크릿 창처럼 어두운 화면으로 (사용자 요청 2026-10-12)
-    if (!widget.chat.isSecret(_key)) return _scaffold(context);
-    return Theme(data: AppTheme.dark, child: Builder(builder: _scaffold));
+    final theme = widget.chat.isSecret(_key) ? AppTheme.dark : Theme.of(context);
+    return Theme(
+      data: AppTheme.withDefaultFont(theme),
+      child: Builder(builder: _scaffold),
+    );
   }
 
   Widget _scaffold(BuildContext context) {

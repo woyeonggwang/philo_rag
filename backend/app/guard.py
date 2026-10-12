@@ -113,6 +113,10 @@ def check(persona_key: str, text: str, *, safety: bool,
         bad.append(f'자기를 낮추는 겸양어를 썼다("{m.group(2)}"). '
                    f'상대가 윗사람이 아니다. "저/제가"를 "나/내가"로 바꿔라')
 
+    # 시스템이 준 재료를 드러내는 말. "그대가 제시한 구절들에 따르면"처럼 사용자가 구절을 준 것처럼 말했다 (2026-10-12)
+    if "구절" in text:
+        bad.append('"구절"이라는 말을 썼다. 시스템이 준 재료를 드러내지 말고 네 말과 네 글로 말하라')
+
     m = _CITATION.search(text)
     if m:
         bad.append(f'출처 표기를 적었다("{m.group(0)}"). 장절 번호를 쓰지 마라')

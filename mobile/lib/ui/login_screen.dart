@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../state/auth.dart';
+import 'app_theme.dart';
 
 class LoginScreen extends StatefulWidget {
   final AuthController auth;
@@ -36,6 +37,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return Theme(
+      data: AppTheme.withDefaultFont(Theme.of(context)),
+      child: Builder(builder: _buildContent),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final a = widget.auth;
     final theme = Theme.of(context);
     return Scaffold(
@@ -46,7 +54,14 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.all(24),
             children: [
               const SizedBox(height: 24),
-              Text('쉼표, · 로그인', style: theme.textTheme.headlineMedium, textAlign: TextAlign.center),
+              Text.rich(
+                const TextSpan(children: [
+                  TextSpan(text: '쉼표,', style: TextStyle(fontFamily: 'GowunBatang')),
+                  TextSpan(text: ' · 로그인'),
+                ]),
+                style: theme.textTheme.headlineMedium,
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 8),
               Text('한 번 로그인하면 다음부터는 바로 시작합니다.',
                   style: theme.textTheme.bodyMedium, textAlign: TextAlign.center),

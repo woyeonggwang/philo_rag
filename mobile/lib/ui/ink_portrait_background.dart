@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'portrait_ink.dart';
 
-// 기존 속도의 40%로 퍼진 뒤, 같은 시간 동안 번짐을 역순으로 거둔다.
-const _spreadSeconds = 4.32 / 0.4;
-const _holdSeconds = 2.16;
+// 번짐·역재생과 사라지기 전 유지 시간을 이전의 절반으로 줄인다.
+const _spreadSeconds = 5.4;
+const _holdSeconds = 1.08;
 const _fadeOutSeconds = _spreadSeconds;
 const _fadeInSeconds = 1.08;
 const _portraitSeconds = _spreadSeconds + _holdSeconds + _fadeOutSeconds;

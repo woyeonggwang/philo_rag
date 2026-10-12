@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../data/persona_profiles.dart';
 import 'persona_grid_screen.dart' show PersonaVisual;
+import 'app_theme.dart';
 
 class PersonaDetailScreen extends StatelessWidget {
   final PersonaProfile profile;
@@ -13,6 +14,13 @@ class PersonaDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return Theme(
+      data: AppTheme.withDefaultFont(Theme.of(context)),
+      child: Builder(builder: _buildContent),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final theme = Theme.of(context);
     final t = theme.textTheme;
     final p = profile;
@@ -22,7 +30,7 @@ class PersonaDetailScreen extends StatelessWidget {
       260.0,
     );
     return Scaffold(
-      appBar: AppBar(title: Text(p.name)),
+      appBar: AppBar(title: Text(p.name, style: const TextStyle(fontFamily: 'GowunBatang'))),
       body: Column(
         children: [
           SizedBox(
@@ -56,9 +64,9 @@ class PersonaDetailScreen extends StatelessWidget {
       children: [
         Text(p.lifespan, style: t.bodySmall),
         const SizedBox(height: 6),
-        Text(p.tagline, style: t.titleMedium),
+        Text(p.tagline, style: t.titleMedium?.copyWith(fontFamily: 'GowunBatang')),
         const SizedBox(height: 28),
-        Text('사상', style: t.titleLarge),
+        Text('사상', style: t.titleLarge?.copyWith(fontFamily: 'GowunBatang')),
         const SizedBox(height: 10),
         Text(p.summary, style: t.bodyMedium),
         const SizedBox(height: 16),
@@ -70,7 +78,7 @@ class PersonaDetailScreen extends StatelessWidget {
               children: [
                 Text(
                   idea.title,
-                  style: t.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                  style: t.titleSmall?.copyWith(fontWeight: FontWeight.w600, fontFamily: 'GowunBatang'),
                 ),
                 const SizedBox(height: 4),
                 Text(idea.body, style: t.bodyMedium),
@@ -78,7 +86,7 @@ class PersonaDetailScreen extends StatelessWidget {
             ),
           ),
         const SizedBox(height: 16),
-        Text('책', style: t.titleLarge),
+        Text('책', style: t.titleLarge?.copyWith(fontFamily: 'GowunBatang')),
         const SizedBox(height: 8),
         Text(p.booksIntro, style: t.bodySmall),
         const SizedBox(height: 8),

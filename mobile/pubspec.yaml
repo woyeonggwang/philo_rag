@@ -70,6 +70,9 @@ flutter:
     - family: GowunBatang
       fonts:
         - asset: assets/fonts/GowunBatang-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/GowunBatang-Bold.ttf
+          weight: 700
     - family: HiMelody
       fonts:
         - asset: assets/fonts/HiMelody-Regular.ttf

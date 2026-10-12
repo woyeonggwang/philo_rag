@@ -11,6 +11,7 @@ import '../api/models.dart';
 import '../state/auth.dart';
 import '../state/settings.dart';
 import 'reports_screen.dart';
+import 'app_theme.dart';
 
 class SettingsScreen extends StatefulWidget {
   final SettingsStore settings;
@@ -160,6 +161,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return Theme(
+      data: AppTheme.withDefaultFont(Theme.of(context)),
+      child: Builder(builder: _buildContent),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final s = widget.settings;
     final theme = Theme.of(context);
     return Scaffold(

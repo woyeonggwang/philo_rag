@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../api/client.dart';
 import '../api/models.dart';
 import '../data/persona_profiles.dart';
+import 'app_theme.dart';
 
 class ReportsScreen extends StatefulWidget {
   final PhiloRagClient Function() client;
@@ -40,6 +41,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return Theme(
+      data: AppTheme.withDefaultFont(Theme.of(context)),
+      child: Builder(builder: _buildContent),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(title: const Text('신고 내역')),
