@@ -127,3 +127,15 @@ def test_chat_test_page_is_served(client):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/html")
     assert "철학 RAG 테스트" in r.text and 'fetch("/ask"' in r.text and "X-User-Id" in r.text
+
+
+def test_usage_reads_without_counting(client, fake_answer, personal):
+    """GET /usage — 설정 화면의 남은 사용량. 읽기만 하고 세지 않는다."""
+    r = client.get("/usage", headers={"X-User-Id": "user-a"})
+    assert r.status_code == 200
+    assert r.json() == {"plan": "personal", "plan_name": "Personal", "used_today": 0, "daily_limit": 5}
+    _ask(client); _ask(client)
+    r = client.get("/usage", headers={"X-User-Id": "user-a"})
+    assert r.json()["used_today"] == 2
+    client.get("/usage", headers={"X-User-Id": "user-a"})
+    assert plans.status("user-a").used == 2          # 조회는 횟수를 올리지 않는다

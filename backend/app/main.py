@@ -110,6 +110,19 @@ def list_personas():
             for p in personas.listed()]
 
 
+@app.get("/usage", response_model=UsageInfo)
+def usage(authorization: str | None = Header(None, description="Bearer <Firebase ID 토큰>"),
+          x_user_id: str | None = Header(None, description="기기 ID. 로그인 토큰이 없을 때만 쓴다")):
+    """요금제와 오늘 쓴 질문 수. 세지 않고 읽기만 한다 — 앱 설정 화면의 "남은 사용량" 용 (2026-10-12)."""
+    try:
+        user_id = auth.resolve_user(authorization, x_user_id)
+    except plans.InvalidUserId as e:
+        raise HTTPException(400, str(e))
+    except auth.AuthError as e:
+        raise HTTPException(401, str(e))
+    return plans.status(user_id).as_dict()
+
+
 @app.post("/ask", response_model=AskResponse)
 def ask(req: AskRequest,
         authorization: str | None = Header(None, description="Bearer <Firebase ID 토큰>. 로그인한 앱이 보낸다"),
