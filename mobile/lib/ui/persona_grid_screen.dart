@@ -5,8 +5,10 @@
 /// 예전 임시 화면의 "연결" 버튼을 없앤 대신이다.
 library;
 
-import 'package:flutter/foundation.dart';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
@@ -14,6 +16,8 @@ import '../state/auth.dart';
 import '../state/chat.dart';
 import '../state/settings.dart';
 import 'chat_screen.dart';
+import 'comma_mark.dart';
+import 'portrait_ink.dart';
 
 class PersonaGridScreen extends StatefulWidget {
   final SettingsStore settings;
@@ -96,61 +100,24 @@ class _PersonaGridScreenState extends State<PersonaGridScreen> {
     ));
   }
 
-  /// 개발용 — 실기기(같은 Wi-Fi)에서 PC 서버 주소를 바꿀 때. 릴리스 빌드에는 메뉴가 없다.
-  Future<void> _editServer() async {
-    final ctl = TextEditingController(text: widget.settings.baseUrl);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('서버 주소 (개발용)'),
-        content: TextField(
-          controller: ctl,
-          keyboardType: TextInputType.url,
-          decoration: const InputDecoration(helperText: '에뮬레이터 http://10.0.2.2:8000\n실기기 http://192.168.0.10:8000'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('저장')),
-        ],
-      ),
-    );
-    if (ok == true) {
-      await widget.settings.setBaseUrl(ctl.text);
-      _load();
-    }
-    ctl.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final auth = widget.auth;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('누구에게 물어볼까요?'),
-        actions: [
-          // 임시 계정 메뉴 — 정식 UI(Codex)에서 설정 화면 등으로 옮긴다
-          if (auth != null)
-            PopupMenuButton<String>(
-              tooltip: '계정',
-              icon: const Icon(Icons.account_circle_outlined),
-              onSelected: (v) {
-                if (v == 'server') _editServer();
-                if (v == 'signout') auth.signOut();
-              },
-              itemBuilder: (_) => [
-                PopupMenuItem(enabled: false, child: Text(auth.user?.label ?? '')),
-                if (kDebugMode) const PopupMenuItem(value: 'server', child: Text('서버 주소 (개발용)')),
-                const PopupMenuItem(value: 'signout', child: Text('로그아웃')),
-              ],
-            ),
-        ],
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const CommaMark(),
+            const Text('누구에게 물어볼까요?', style: TextStyle(fontSize: 12)),
+          ],
+        ),
+        // 계정·로그아웃·서버 주소(개발용)는 설정 탭으로 옮겼다 (2026-10-12)
       ),
       body: _body(context),
     );
   }
 
   Widget _body(BuildContext context) {
-    final theme = Theme.of(context);
     if (_error != null) {
       return Center(
         child: Padding(
@@ -170,31 +137,37 @@ class _PersonaGridScreenState extends State<PersonaGridScreen> {
     return GridView.count(
       crossAxisCount: 2,
       padding: const EdgeInsets.all(16),
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      childAspectRatio: 0.85,
+      mainAxisSpacing: 16,
+      crossAxisSpacing: 16,
+      childAspectRatio: 0.78,
       children: [
         for (final p in ps)
           Card(
             key: ValueKey('persona-${p.key}'),
             clipBehavior: Clip.antiAlias,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+              side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.6)),
+            ),
             child: InkWell(
               onTap: () => _open(p),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    CircleAvatar(
-                      radius: 24,
-                      backgroundColor: theme.colorScheme.primaryContainer,
-                      child: Text(p.name.characters.first, style: theme.textTheme.titleLarge),
+              child: Semantics(
+                label: '${p.name}에게 물어보기',
+                child: Ink(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: const Alignment(0, -0.3),
+                      radius: 1.1,
+                      colors: [
+                        Theme.of(context).colorScheme.surfaceContainerHigh,
+                        Theme.of(context).colorScheme.surface,
+                      ],
                     ),
-                    const Spacer(),
-                    Text(p.name, style: theme.textTheme.titleLarge),
-                    const SizedBox(height: 6),
-                    Text(p.blurb, style: theme.textTheme.bodySmall, maxLines: 4, overflow: TextOverflow.ellipsis),
-                  ],
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
+                    child: PersonaVisual(name: p.name),
+                  ),
                 ),
               ),
             ),
@@ -202,4 +175,102 @@ class _PersonaGridScreenState extends State<PersonaGridScreen> {
       ],
     );
   }
+}
+
+/// 기존 일러스트의 세 패널 중 해당 인물만 표시한다.
+class PersonaVisual extends StatefulWidget {
+  final String name;
+  final Widget? illustration;
+  const PersonaVisual({super.key, required this.name, this.illustration});
+
+  @override
+  State<PersonaVisual> createState() => _PersonaVisualState();
+}
+
+class _PersonaVisualState extends State<PersonaVisual> {
+  ui.Image? _image;
+  ui.Image? _lightImage;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    await Future.wait([_loadAsset(portraitDarkAsset, false), _loadAsset(portraitLightAsset, true)]);
+  }
+
+  Future<void> _loadAsset(String asset, bool light) async {
+    final data = await rootBundle.load(asset);
+    final codec = await ui.instantiateImageCodec(data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes));
+    final frame = await codec.getNextFrame();
+    codec.dispose();
+    if (!mounted) {
+      frame.image.dispose();
+      return;
+    }
+    setState(() {
+      if (light) {
+        _lightImage = frame.image;
+      } else {
+        _image = frame.image;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _image?.dispose();
+    _lightImage?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.illustration != null) return widget.illustration!;
+    final image = Theme.of(context).brightness == Brightness.light ? _lightImage : _image;
+    if (image == null) return const SizedBox.expand();
+    final panel = switch (widget.name) { '니체' => 0, '부처' => 2, _ => 1 };
+    return CustomPaint(
+      painter: _PortraitPainter(image, panel, Theme.of(context).brightness),
+      child: const SizedBox.expand(),
+    );
+  }
+}
+
+/// 어두운 배경을 투명하게 처리하고 인물을 카드에 크게 배치한다.
+class _PortraitPainter extends CustomPainter {
+  final ui.Image image;
+  final int panel;
+  final Brightness brightness;
+  const _PortraitPainter(this.image, this.panel, this.brightness);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final width = image.width / 3;
+    final source = brightness == Brightness.light
+        ? Rect.fromLTWH(width * panel, 0, width, image.height.toDouble())
+        : Rect.fromLTWH(
+      width * (panel + 0.08), image.height * 0.13,
+      width * 0.84, image.height * 0.76,
+    );
+    final bounds = Offset.zero & size;
+    final fitted = applyBoxFit(BoxFit.contain, source.size, size);
+    final destination = Alignment.bottomCenter.inscribe(fitted.destination, bounds);
+    canvas.saveLayer(bounds, Paint());
+    canvas.drawImageRect(image, source, destination, Paint()
+      ..filterQuality = FilterQuality.high
+      ..colorFilter = portraitInkFilter(brightness));
+    canvas.drawRect(bounds, Paint()
+      ..blendMode = BlendMode.dstIn
+      ..shader = ui.Gradient.linear(
+        Offset(0, size.height * 0.9), Offset(0, size.height),
+        [Colors.white, Colors.transparent], [0.0, 1.0],
+      ));
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(_PortraitPainter oldDelegate) => oldDelegate.image != image || oldDelegate.panel != panel || oldDelegate.brightness != brightness;
 }

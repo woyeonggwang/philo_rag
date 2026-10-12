@@ -12,11 +12,26 @@ import 'dart:io' show Platform;
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show ThemeMode;
 import 'package:shared_preferences/shared_preferences.dart';
+
+/// 글씨 크기 단계 (설정 탭). 앱 전체 글자에 배율로 곱한다.
+enum TextSize {
+  small('작게', 0.9),
+  normal('보통', 1.0),
+  large('크게', 1.15),
+  xlarge('아주 크게', 1.3);
+
+  final String label;
+  final double scale;
+  const TextSize(this.label, this.scale);
+}
 
 class SettingsStore extends ChangeNotifier {
   static const _keyBaseUrl = 'base_url';
   static const _keyUserId = 'user_id';
+  static const _keyThemeMode = 'theme_mode'; // "light" | "dark"
+  static const _keyTextSize = 'text_size';   // TextSize.name
 
   /// 플랫폼별 기본값. 저장된 값이 없을 때만 쓴다.
   static String get defaultBaseUrl {
@@ -30,6 +45,26 @@ class SettingsStore extends ChangeNotifier {
 
   String _userId = '';
 
+  // 화면 설정 (2026-10-12). 기본은 다크 — Codex 디자인의 기본값
+  ThemeMode _themeMode = ThemeMode.dark;
+  TextSize _textSize = TextSize.normal;
+
+  ThemeMode get themeMode => _themeMode;
+  TextSize get textSize => _textSize;
+
+  /// 라이트 / 다크. 기기에 저장한다.
+  Future<void> setThemeMode(ThemeMode m) async {
+    _themeMode = m == ThemeMode.light ? ThemeMode.light : ThemeMode.dark;
+    await _prefs?.setString(_keyThemeMode, _themeMode == ThemeMode.light ? 'light' : 'dark');
+    notifyListeners();
+  }
+
+  Future<void> setTextSize(TextSize s) async {
+    _textSize = s;
+    await _prefs?.setString(_keyTextSize, s.name);
+    notifyListeners();
+  }
+
   String get baseUrl => _baseUrl;
 
   /// 이 기기의 사용자 ID (UUID v4 꼴). 서버에 X-User-Id 헤더로 보낸다. load() 뒤에 쓴다.
@@ -40,6 +75,9 @@ class SettingsStore extends ChangeNotifier {
     _prefs = await SharedPreferences.getInstance();
     _baseUrl = _prefs!.getString(_keyBaseUrl) ?? defaultBaseUrl;
     _userId = _prefs!.getString(_keyUserId) ?? '';
+    _themeMode = _prefs!.getString(_keyThemeMode) == 'light' ? ThemeMode.light : ThemeMode.dark;
+    _textSize = TextSize.values.firstWhere((t) => t.name == _prefs!.getString(_keyTextSize),
+        orElse: () => TextSize.normal);
     if (_userId.isEmpty) {
       _userId = newUserId();
       await _prefs!.setString(_keyUserId, _userId);

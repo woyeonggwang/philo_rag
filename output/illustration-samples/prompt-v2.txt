@@ -1,0 +1,2 @@
+﻿Built-in image_gen edit of philosophers-monochrome-v1.png.
+Prompt: Preserve Nietzsche, Jesus, Buddha identities, poses and monochrome ink style in three equal-width panels. Complete shoulders and arms, scale figures down, add generous blank charcoal space on both sides of every portrait and above/below. No body touching panel boundaries. Extend cut-off clothing naturally; feather lower torso into charcoal background with watercolor/ink texture. No text or borders.

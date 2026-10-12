@@ -2,8 +2,10 @@
 // 실행: mobile 폴더에서  flutter test
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -12,6 +14,7 @@ import 'package:philo_rag/state/chat.dart';
 import 'package:philo_rag/state/settings.dart';
 import 'package:philo_rag/ui/chat_screen.dart';
 import 'package:philo_rag/ui/persona_grid_screen.dart';
+import 'package:philo_rag/ui/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const _personas = [
@@ -44,28 +47,74 @@ Future<void> _pump(WidgetTester t, PhiloRagClient client) async {
   SharedPreferences.setMockInitialValues({});
   final settings = SettingsStore();
   await settings.load();
-  await t.pumpWidget(MaterialApp(
+  await t.pumpWidget(RepaintBoundary(key: const Key('grid-preview'), child: MaterialApp(
+    theme: AppTheme.dark,
     home: PersonaGridScreen(
       settings: settings,
       chat: ChatController(client), // 저장 없음
       client: () => client,
       retryDelay: const Duration(milliseconds: 10),
     ),
-  ));
+  )));
 }
 
 void main() {
+  testWidgets('테마를 바꾸면 기존 인물 위젯이 전용 이미지로 전환된다', (t) async {
+    Future<void> showTheme(ThemeData theme) async {
+      await t.pumpWidget(MaterialApp(
+        theme: theme,
+        home: const SizedBox(width: 200, height: 300, child: PersonaVisual(name: '니체')),
+      ));
+      await t.runAsync(() async {
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+      });
+      await t.pumpAndSettle();
+    }
+    dynamic painter() => t.widget<CustomPaint>(find.descendant(
+      of: find.byType(PersonaVisual), matching: find.byType(CustomPaint),
+    )).painter;
+    await showTheme(AppTheme.dark);
+    final ui.Image darkImage = painter().image;
+    await showTheme(AppTheme.light);
+    final ui.Image lightImage = painter().image;
+    expect(identical(darkImage, lightImage), isFalse);
+    expect(painter().brightness, Brightness.light);
+    await showTheme(AppTheme.dark);
+    expect(identical(painter().image, darkImage), isTrue);
+    expect(t.takeException(), isNull);
+  });
+
   testWidgets('철학자가 2열 바둑판으로 뜬다 (서버 주소·연결 줄 없음, 꺼진 철학자 빼고)', (t) async {
+    t.view.physicalSize = const Size(390, 844);
+    t.view.devicePixelRatio = 1;
+    addTearDown(t.view.resetPhysicalSize);
+    addTearDown(t.view.resetDevicePixelRatio);
     await _pump(t, _server());
     await t.pumpAndSettle();
     final grid = t.widget<GridView>(find.byType(GridView));
     expect((grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount).crossAxisCount, 2);
-    expect(find.text('니체'), findsOneWidget);
-    expect(find.text('예수'), findsOneWidget);
-    expect(find.text('부처'), findsOneWidget);
+    expect(find.byKey(const ValueKey('persona-nietzsche')), findsOneWidget);
+    expect(find.byKey(const ValueKey('persona-jesus')), findsOneWidget);
+    expect(find.byKey(const ValueKey('persona-buddha')), findsOneWidget);
+    expect(find.byType(PersonaVisual), findsNWidgets(3));
+    expect(find.text('니체'), findsNothing);
+    expect(find.text('예수'), findsNothing);
+    expect(find.text('부처'), findsNothing);
+    expect(find.text('쉼표,'), findsNothing);
     expect(find.text('숨김'), findsNothing);
     expect(find.text('연결'), findsNothing);
     expect(find.byType(ChatScreen), findsNothing); // 대화창은 아직 안 열렸다
+    await t.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+    });
+    await t.pumpAndSettle();
+    final boundary = t.renderObject<RenderRepaintBoundary>(find.byKey(const Key('grid-preview')));
+    await t.runAsync(() async {
+      final image = await boundary.toImage(pixelRatio: 2);
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      await File('../output/illustration-samples/persona-grid-v2-preview.png').writeAsBytes(bytes!.buffer.asUint8List());
+      image.dispose();
+    });
   });
 
   testWidgets('철학자를 누르면 그 철학자의 대화창이 열리고, 질문하면 답이 붙는다', (t) async {
@@ -91,6 +140,6 @@ void main() {
     await _pump(t, _server(failFirst: 2));
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     await t.pumpAndSettle();
-    expect(find.text('예수'), findsOneWidget);
+    expect(find.byKey(const ValueKey('persona-jesus')), findsOneWidget);
   });
 }

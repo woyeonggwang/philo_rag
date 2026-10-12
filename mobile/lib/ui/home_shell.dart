@@ -1,5 +1,5 @@
 /// 로그인한 사용자의 홈 (2026-10-10). 계정마다 대화 상태·저장 폴더를 따로 만든다.
-/// 첫 화면은 철학자 2열 바둑판(persona_grid_screen.dart), 누르면 대화창(chat_screen.dart).
+/// 아래 탭 세 개(대화·소개·설정, main_tabs.dart)를 띄운다. 대화 탭이 철학자 바둑판이고, 누르면 대화창이 탭을 덮고 열린다.
 library;
 
 import 'package:flutter/material.dart';
@@ -9,7 +9,7 @@ import '../state/auth.dart';
 import '../state/chat.dart';
 import '../state/chat_storage.dart';
 import '../state/settings.dart';
-import 'persona_grid_screen.dart';
+import 'main_tabs.dart';
 
 class HomeShell extends StatefulWidget {
   final SettingsStore settings;
@@ -50,7 +50,7 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   @override
-  Widget build(BuildContext context) => PersonaGridScreen(
+  Widget build(BuildContext context) => MainTabs(
         settings: widget.settings,
         chat: _chat,
         auth: widget.auth,

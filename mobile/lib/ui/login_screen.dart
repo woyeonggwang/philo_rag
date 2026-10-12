@@ -46,7 +46,7 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.all(24),
             children: [
               const SizedBox(height: 24),
-              Text('로그인', style: theme.textTheme.headlineMedium, textAlign: TextAlign.center),
+              Text('쉼표, · 로그인', style: theme.textTheme.headlineMedium, textAlign: TextAlign.center),
               const SizedBox(height: 8),
               Text('한 번 로그인하면 다음부터는 바로 시작합니다.',
                   style: theme.textTheme.bodyMedium, textAlign: TextAlign.center),
@@ -87,7 +87,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: _email,
                 keyboardType: TextInputType.emailAddress,
                 autofillHints: const [AutofillHints.email],
-                decoration: const InputDecoration(labelText: '이메일', border: OutlineInputBorder()),
+                decoration: const InputDecoration(labelText: '이메일'),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -97,7 +97,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 autofillHints: [_signUp ? AutofillHints.newPassword : AutofillHints.password],
                 decoration: InputDecoration(
                   labelText: _signUp ? '비밀번호 (6자 이상)' : '비밀번호',
-                  border: const OutlineInputBorder(),
                 ),
                 onSubmitted: (_) => _submitEmail(),
               ),

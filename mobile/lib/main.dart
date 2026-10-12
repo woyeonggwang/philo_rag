@@ -12,6 +12,7 @@ import 'state/auth.dart';
 import 'state/firebase_auth_backend.dart';
 import 'state/settings.dart';
 import 'ui/auth_gate.dart';
+import 'ui/app_theme.dart';
 import 'ui/home_shell.dart';
 
 Future<void> main() async {
@@ -33,13 +34,31 @@ class PhiloRagApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: '철학 RAG',
-      theme: ThemeData(colorSchemeSeed: Colors.brown, useMaterial3: true),
-      home: AuthGate(
-        settings: settings,
-        auth: auth,
-        home: (context, user) => HomeShell(settings: settings, auth: auth, user: user),
+    // 테마(라이트/다크)와 글씨 크기는 설정 탭에서 바꾼다 (SettingsStore, 2026-10-12)
+    return ListenableBuilder(
+      listenable: settings,
+      builder: (context, _) => MaterialApp(
+        title: '쉼표,',
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: settings.themeMode,
+        builder: (context, child) {
+          final system =
+              MediaQuery.textScalerOf(context).scale(14) /
+              14; // 기기 글씨 크기 설정도 살린다
+          return MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              textScaler: TextScaler.linear(system * settings.textSize.scale),
+            ),
+            child: child!,
+          );
+        },
+        home: AuthGate(
+          settings: settings,
+          auth: auth,
+          home: (context, user) =>
+              HomeShell(settings: settings, auth: auth, user: user),
+        ),
       ),
     );
   }

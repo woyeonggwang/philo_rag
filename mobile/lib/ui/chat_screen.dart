@@ -130,7 +130,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     onSubmitted: (_) => _send(),
                     decoration: InputDecoration(
                       hintText: '${widget.persona.name}에게 질문하기',
-                      border: const OutlineInputBorder(),
                       isDense: true,
                     ),
                   ),
@@ -162,6 +161,8 @@ class MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isUser = m.role == Role.user;
+    final isSent = isUser && !m.isError;
+    final isDark = theme.brightness == Brightness.dark;
     final r = m.response;
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
@@ -173,8 +174,9 @@ class MessageBubble extends StatelessWidget {
           color: m.isError
               ? theme.colorScheme.errorContainer
               : isUser
-                  ? theme.colorScheme.primaryContainer
-                  : theme.colorScheme.surfaceContainerHighest,
+                  ? const Color(0xFF7638FA)
+                  : Color(isDark ? 0xFF262626 : 0xFFEFEFEF),
+          border: isSent ? null : Border.all(color: theme.colorScheme.outlineVariant),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Column(
@@ -182,7 +184,10 @@ class MessageBubble extends StatelessWidget {
           children: [
             if (r != null && r.safety) Text('안전 안내가 포함된 답변', style: theme.textTheme.labelSmall),
             // 문장 끝 공백 두 칸 + 줄바꿈(마크다운 줄바꿈)은 정리해서 보여준다 (CLAUDE.md 12절)
-            Text(m.text.replaceAll(RegExp(r'[ \t]+\n'), '\n').trim()),
+            Text(
+              m.text.replaceAll(RegExp(r'[ \t]+\n'), '\n').trim(),
+              style: TextStyle(color: isSent ? Colors.white : theme.colorScheme.onSurface),
+            ),
             if (r != null && r.glossary.isNotEmpty) ...[
               const Divider(),
               for (final g in r.glossary) Text('${g.term}: ${g.meaning}', style: theme.textTheme.bodySmall),

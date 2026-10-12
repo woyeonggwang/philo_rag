@@ -62,6 +62,23 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  assets:
+    - assets/images/philosophers-monochrome-v1.png
+    - assets/images/philosophers-monochrome-v2.png
+    - assets/images/philosophers-light-v1.png
+  fonts:
+    - family: GowunBatang
+      fonts:
+        - asset: assets/fonts/GowunBatang-Regular.ttf
+    - family: HiMelody
+      fonts:
+        - asset: assets/fonts/HiMelody-Regular.ttf
+    - family: NanumPenScript
+      fonts:
+        - asset: assets/fonts/NanumPenScript-Regular.ttf
+    - family: Jua
+      fonts:
+        - asset: assets/fonts/Jua-Regular.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

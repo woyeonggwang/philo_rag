@@ -1,47 +1,83 @@
-/// 처음 실행했을 때 한 번 보이는 소개 화면 (2026-10-10). 화면 아무 데나 누르면 넘어간다 (버튼 없음, 사용자 결정).
-/// 문구·디자인은 Codex 몫.
-library;
+﻿import 'package:flutter/material.dart';
 
-import 'package:flutter/material.dart';
+import 'ink_portrait_background.dart';
+import 'comma_mark.dart';
 
-class WelcomeScreen extends StatelessWidget {
-  /// 화면을 누르면 부른다. 소개를 본 것으로 저장하고 로그인 화면으로 넘어간다.
+/// 처음 한 번 보이는 소개. 화면 어디든 누르면 기존 시작 동작을 실행한다.
+class WelcomeScreen extends StatefulWidget {
   final VoidCallback onStart;
-
   const WelcomeScreen({super.key, required this.onStart});
+
+  @override
+  State<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends State<WelcomeScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _blink = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  );
+  late final Animation<double> _opacity = Tween<double>(begin: 0.25, end: 1)
+      .animate(CurvedAnimation(parent: _blink, curve: Curves.easeInOut));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _blink.stop();
+      _blink.value = 1;
+    } else if (!_blink.isAnimating) {
+      _blink.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _blink.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final t = theme.textTheme;
+    final titleSize = (theme.textTheme.headlineLarge?.fontSize ?? 32) * 4;
     return Scaffold(
       body: GestureDetector(
-        behavior: HitTestBehavior.opaque, // 빈 곳을 눌러도 받는다
-        onTap: onStart,
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onStart,
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: Stack(
+              fit: StackFit.expand,
               children: [
-                const Spacer(),
-                Text('철학 RAG', style: t.headlineLarge, textAlign: TextAlign.center),
-                const SizedBox(height: 16),
-                Text(
-                  '니체 · 예수 · 부처에게 묻고,\n그들이 남긴 글로 답을 듣습니다.',
-                  style: t.titleMedium,
-                  textAlign: TextAlign.center,
+                const Positioned.fill(
+                  child: IgnorePointer(child: InkPortraitBackground()),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  '답은 원전(니체의 저작, 공관복음, 초기 경전)에서 찾은 구절을 근거로 하며,\n어느 구절에서 왔는지 함께 보여 줍니다.',
-                  style: t.bodyMedium,
-                  textAlign: TextAlign.center,
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: CommaMark(size: titleSize),
+                  ),
                 ),
-                const Spacer(),
-                Text('화면을 누르면 시작합니다',
-                    style: t.bodySmall?.copyWith(color: theme.colorScheme.outline), textAlign: TextAlign.center),
-                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: FadeTransition(
+                      opacity: _opacity,
+                      child: Text(
+                        '화면을 누르면 시작합니다',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),

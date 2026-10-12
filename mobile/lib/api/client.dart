@@ -79,6 +79,12 @@ class PhiloRagClient {
         .toList();
   }
 
+  /// GET /usage — 요금제와 오늘 쓴 질문 수. 세지 않고 읽기만 한다 (설정 화면의 남은 사용량).
+  Future<UsageInfo> usage() async {
+    final j = await _getJson('/usage', const Duration(seconds: 10));
+    return UsageInfo.fromJson(j as Map<String, dynamic>);
+  }
+
   /// POST /ask — 앱이 보내는 것은 {persona, question} 뿐이다 (CLAUDE.md 2.1).
   Future<AskResponse> ask(String persona, String question) async {
     final j = await _postJson(
