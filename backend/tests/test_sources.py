@@ -40,7 +40,7 @@ class FakeLLM:
 @pytest.fixture
 def fake_llm(monkeypatch):
     fake = FakeLLM()
-    monkeypatch.setattr(llm, "get_llm", lambda: fake)
+    monkeypatch.setattr(llm, "get_llm", lambda *a, **k: fake)
     return fake
 
 

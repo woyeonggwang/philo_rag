@@ -19,10 +19,33 @@ USER_TEMPLATE = """구절:
 
 질문: {question}"""
 
-# 근거 구절이 하나도 없을 때. "가장 가까운 것을 꺼내라"고 시키면 학습 기억에서 지어낸다 (6.9). 멈추게 한다.
+# 근거 구절이 하나도 없을 때 (2026-10-12 사용자 결정으로 바꿈, CLAUDE.md 6.21).
+# 예전엔 "다룬 적 없다"로 멈췄다(6.9) — 비용은 드는데 답을 못 들었다. 이제는 "직접 다룬 문제가 아니다"라는
+# 첫 문장(personas.open_line)을 코드가 그대로 붙여 지어낸 말이 아님을 먼저 밝히고, 그 사람의 관점에서 찬반 양쪽을 말한다.
+# 온도는 settings.llm_temperature_open 으로 올린다.
 NO_CONTEXT = """질문: {question}
 
-이 질문에 맞는 구절이 없다. 이 주제는 다룬 적이 없다고 한두 문장으로 말하고 멈춰라. 조언하지 마라."""
+이 질문에 맞는 구절이 없다. "직접 다룬 문제가 아니다"라는 첫 문장은 이미 앞에 붙는다. 다시 쓰지 말고 바로 이어서,
+네 관점에서 찬성하는 생각과 반대하는 생각을 하나씩 말하라. 어느 쪽으로도 결론 내리지 마라.
+있지도 않은 네 말을 인용하지 마라. 구체적인 투자·의료·법률 지시는 하지 마라."""
+
+# ── 사이비·이단 (2026-10-12 사용자 결정) ──
+# 이런 질문은 찬반을 나누지 않고 무조건 경계하게 한다. 근거 구절은 검색이 아니라 문구로 고른다
+# (한국어 질문으로는 마 7:15 가 상위에 안 올라온다. retriever.find). 목록에 없는 이름은 잡지 못한다 — 늘려 쓸 것.
+CULT_PATTERNS = re.compile(
+    r"이만희|신천지|정명석|JMS|기독교복음선교회|안상홍|장길자|하나님의교회\s*세계복음선교협회|"
+    r"문선명|한학자|통일교|통일\s*가정연합|유병언|구원파|이재록|만민중앙|신옥주|은혜로\s*교회", re.I)
+
+CULT_NEEDLES = {
+    "jesus": ["Beware of false prophets", "false Christs"],            # 마 7:15, 24:24, 막 13:22
+    "nietzsche": ["lose me and find yourselves", 'pronounced "holy."'],  # 차라투스트라 「베푸는 덕」, 이 사람을 보라 「나는 왜 운명인가」 1
+    "buddha": ["don't go by oral transmission"],                       # 깔라마경
+}
+
+CULT_NOTE = """
+
+질문에 나온 사람이나 단체는 스스로 재림주·구원자를 자처하며 사람을 미혹하는 무리다. 찬반을 나누지 마라.
+위 구절로 {cult_line}"""
 
 # ── 안전 분기 (CLAUDE.md 6.19) ──
 # 1차: 정규식 — 명백한 표현은 호출 없이 잡는다 (빠르고 공짜).
@@ -58,10 +81,10 @@ def _is_crisis(question: str) -> tuple[bool, str]:
     return verdict.startswith("예"), "llm"
 
 
-def _invoke(persona_key, messages, s) -> str:
+def _invoke(persona_key, messages, s, temperature=None) -> str:
     """LLM 을 한 번 호출하고 본문만 돌려준다. 잘렸거나 한국어가 아니면 예외."""
     from .llm import get_llm
-    resp = get_llm().invoke(messages)
+    resp = (get_llm() if temperature is None else get_llm(temperature)).invoke(messages)
 
     # langchain-core 1.x 는 content 가 블록 리스트로 올 수 있다. text 가 text 블록만 합쳐 준다 (사고 블록 제외)
     text = resp.text.strip()
@@ -111,16 +134,25 @@ def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
 
     # 안전 판단이 먼저다. 위기면 검색·근거 구절을 쓰지 않는다 (구절에서 죽음의 수사를 끌어올 수 있다)
     safety, how = _is_crisis(question)
+    cult = not safety and bool(CULT_PATTERNS.search(question))
+    open_ = False           # 근거 구절이 없어 "직접 다룬 문제가 아니다" + 찬반으로 답하는 경우
+    must = None             # 답변에 반드시 들어가야 할 말 (guard 가 확인)
     if safety:
         log.info("[%s] 안전 경로 (%s)", persona_key, how)
         kept = []
         user = SAFETY_TEMPLATE.format(question=question)
     else:
-        hits = retriever.search(persona_key, question, top_k)
-        kept = [h for h in hits if h["score"] >= s.min_score]
-        log.info("[%s] 검색 %d개 중 %d개 채택 (최고 %.3f)",
-                 persona_key, len(hits), len(kept),
-                 hits[0]["score"] if hits else 0.0)
+        if cult:
+            kept = retriever.find(persona_key, CULT_NEEDLES[persona_key], question)
+            log.info("[%s] 사이비 경로 — 고정 구절 %d개", persona_key, len(kept))
+            if persona_key == "jesus":
+                must = "거짓 선지자"
+        else:
+            hits = retriever.search(persona_key, question, top_k)
+            kept = [h for h in hits if h["score"] >= s.min_score]
+            log.info("[%s] 검색 %d개 중 %d개 채택 (최고 %.3f)",
+                     persona_key, len(hits), len(kept),
+                     hits[0]["score"] if hits else 0.0)
         if kept:
             passages = "\n\n".join(
                 PASSAGE_TEMPLATE.format(
@@ -131,13 +163,23 @@ def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
                     text=h["text"])
                 for i, h in enumerate(kept, 1))
             user = USER_TEMPLATE.format(passages=passages, question=question)
+            if cult:
+                user += CULT_NOTE.format(cult_line=persona.cult_line)
         else:
+            open_ = True
             user = NO_CONTEXT.format(question=question)
 
-    answer_text, retries = _generate(persona_key, persona, user, kept, safety, s)
+    answer_text, retries = _generate(
+        persona_key, persona, user, safety, s,
+        temperature=s.llm_temperature_open if open_ else None,
+        must_include=must,
+        # 첫 문장은 코드가 붙이므로 모델이 또 쓰면 두 번 나온다
+        must_not_include=persona.open_line if open_ else None)
 
     if safety:
         answer_text = SAFETY_NOTICE + "\n\n" + answer_text
+    elif open_:
+        answer_text = persona.open_line + " " + answer_text
 
     return {
         "persona": persona_key,
@@ -161,15 +203,17 @@ def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
     }
 
 
-def _generate(persona_key, persona, user, kept, safety, s) -> tuple[str, int]:
+def _generate(persona_key, persona, user, safety, s, *, temperature=None,
+              must_include=None, must_not_include=None) -> tuple[str, int]:
     """LLM 호출 + 규칙 검사 + 재생성. (답변 본문, 재생성 횟수)."""
     # 규칙 위반이면 무엇을 어겼는지 알려 주고 다시 쓰게 한다 (CLAUDE.md 6.13).
     messages = [SystemMessage(content=persona.system), HumanMessage(content=user)]
     retries = 0
     for attempt in range(s.max_retries + 1):
-        answer_text = _invoke(persona_key, messages, s)
-        violations = guard.check(persona_key, answer_text,
-                                 grounded=bool(kept), safety=safety)
+        answer_text = _invoke(persona_key, messages, s, temperature)
+        violations = guard.check(persona_key, answer_text, safety=safety,
+                                 must_include=must_include,
+                                 must_not_include=must_not_include)
         if not violations:
             break
         if attempt == s.max_retries:

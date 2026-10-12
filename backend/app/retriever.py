@@ -93,3 +93,19 @@ def search(persona: str, query: str, top_k: int | None = None):
         c["score"] = round(float(score), 4)
         out.append(c)
     return out
+
+
+def find(persona: str, needles: list[str], query: str):
+    """본문에 needles 중 하나가 그대로 들어 있는 청크 (사이비 질문의 고정 구절, rag.py).
+    검색으로는 "거짓 선지자를 삼가라"(마 7:15)가 상위에 안 올라와서 문구로 찾는다. 점수는 query 와의 실제 유사도."""
+    idx, chunks = _index(persona)
+    with _lock:
+        v = _embedder().encode([query], normalize_embeddings=True)
+    v = np.asarray(v, dtype="float32")[0]
+    out = []
+    for i, ch in enumerate(chunks):
+        if any(n in ch["text"] for n in needles):
+            c = dict(ch)
+            c["score"] = round(float(idx.reconstruct(i) @ v), 4)
+            out.append(c)
+    return out

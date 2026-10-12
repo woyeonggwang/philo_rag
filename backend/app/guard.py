@@ -73,14 +73,20 @@ _CITATION = re.compile(r"\(\s*(마태복음|마가복음|누가복음|마태|마
 # 너무 빡빡하면 재생성만 반복하므로 "명백히 길다" 선에서 자른다.
 _MAX_CHARS = 500          # 3~5문장 목표. 이전 1,000 은 4~5문단 답변을 허용해 버렸다
 _MAX_PARAGRAPHS = 3
-
-# 근거 없음(NO_CONTEXT) 경로는 두 문장이 목표다.
-_NO_CONTEXT_MAX_CHARS = 200
+# 근거 없음 경로는 예전엔 두 문장(200자)이었으나, 2026-10-12 부터 찬반을 말하므로 같은 한도를 쓴다 (CLAUDE.md 6.21)
 
 
-def check(persona_key: str, text: str, *, grounded: bool, safety: bool) -> list[str]:
-    """어긴 규칙을 한국어 설명으로 돌려준다. 빈 리스트면 통과."""
+def check(persona_key: str, text: str, *, safety: bool,
+          must_include: str | None = None, must_not_include: str | None = None) -> list[str]:
+    """어긴 규칙을 한국어 설명으로 돌려준다. 빈 리스트면 통과.
+    must_include: 반드시 들어가야 할 말 (사이비 질문에 예수의 "거짓 선지자").
+    must_not_include: 시스템이 이미 앞에 붙이는 문장 (근거 없음 경로의 첫 문장) — 모델이 또 쓰면 두 번 나온다."""
     bad: list[str] = []
+
+    if must_include and must_include not in text:
+        bad.append(f'"{must_include}"라는 말이 빠졌다. 반드시 넣어라')
+    if must_not_include and must_not_include in text:
+        bad.append(f'"{must_not_include}"는 시스템이 이미 앞에 붙인다. 빼고 그 뒤의 말만 써라')
 
     m = _ENGLISH.search(text)
     if m:
@@ -114,14 +120,10 @@ def check(persona_key: str, text: str, *, grounded: bool, safety: bool) -> list[
     if safety:
         return bad          # 안전 경로는 길이를 따지지 않는다 (앞에 고정 문구가 붙는다)
 
-    if not grounded:
-        if len(text) > _NO_CONTEXT_MAX_CHARS:
-            bad.append(f"너무 길다({len(text)}자). 두 문장으로만 답하라")
-    else:
-        if len(text) > _MAX_CHARS:
-            bad.append(f"너무 길다({len(text)}자). 3~5문장으로 줄여라")
-        elif text.count("\n\n") + 1 > _MAX_PARAGRAPHS:
-            bad.append("문단이 너무 많다. 3~5문장으로 줄여라")
+    if len(text) > _MAX_CHARS:
+        bad.append(f"너무 길다({len(text)}자). 3~5문장으로 줄여라")
+    elif text.count("\n\n") + 1 > _MAX_PARAGRAPHS:
+        bad.append("문단이 너무 많다. 3~5문장으로 줄여라")
 
     return bad
 

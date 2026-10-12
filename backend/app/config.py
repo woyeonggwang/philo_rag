@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     llm_provider: str = "google"          # google | groq | openai | openrouter | anthropic | ollama
     llm_model: str = "gemini-3.6-flash"   # .env 가 항상 덮어쓴다. 3.8 은 하루 20요청이라 쓰지 않는다 (6.10)
     llm_temperature: float = 0.0          # 6.16: 0 이 길이·규칙 준수에 유리. 창작은 온도로 안 줄어든다
+    # 근거 구절이 없을 때 "직접 다룬 문제가 아니다" + 찬반 양쪽을 말하는 답변의 온도 (2026-10-12 사용자 결정, CLAUDE.md 6.21)
+    llm_temperature_open: float = 0.7
     llm_max_tokens: int = 4096           # Gemini 는 사고 토큰도 이 한도에 포함된다. 2048 은 잘렸다 (9.2)
     # Gemini 사고(thinking) 제어. 둘 다 비어 있으면 모델 기본값을 쓴다.
     #   3.x 계열: llm_thinking_level = low | medium | high  (3.8-flash 는 minimal 거부)

@@ -8,11 +8,12 @@ from functools import lru_cache
 from .config import get_settings
 
 
-@lru_cache(maxsize=1)
-def get_llm():
+@lru_cache(maxsize=4)
+def get_llm(temperature: float | None = None):
+    """temperature 를 주면 그 온도로 따로 만든다 — 근거 구절이 없을 때의 찬반 답변용 (rag.py, 2026-10-12)."""
     s = get_settings()
     p = s.llm_provider.lower()
-    common = dict(temperature=s.llm_temperature)
+    common = dict(temperature=s.llm_temperature if temperature is None else temperature)
 
     if p == "google":
         from langchain_google_genai import ChatGoogleGenerativeAI
