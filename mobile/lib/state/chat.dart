@@ -5,6 +5,11 @@
 ///
 /// 폰에 저장한다 (2026-10-10, chat_storage.dart). 앱을 켤 때 load(), 메시지가 붙을 때마다 그 페르소나 파일을 다시 쓴다.
 /// 페르소나마다 최근 [maxMessagesPerPersona]개(질문·답 각각 1개)만 남기고 오래된 것부터 지운다.
+///
+/// 2026-10-12 (사용자 결정):
+///  - 질문 하나와 그 답을 골라 지울 수 있다 ([deleteExchange]). 전체 지우기([clear])는 그대로.
+///  - 시크릿 모드 ([setSecret]) — 켜면 저장된 대화 대신 빈 대화가 보이고, 여기서 나눈 대화는 폰에 저장하지 않는다.
+///    끄면(대화창을 나가도) 사라진다. 서버는 원래 질문을 남기지 않는다 (사용 횟수만 센다).
 library;
 
 import 'package:flutter/foundation.dart';
@@ -74,6 +79,9 @@ class ChatController extends ChangeNotifier {
   /// null 이면 저장하지 않는다 (테스트·미리보기용).
   final ChatStorage? _storage;
   final Map<String, List<ChatMessage>> _threads = {};
+
+  /// 시크릿 모드인 페르소나의 대화. 메모리에만 있고 저장하지 않는다.
+  final Map<String, List<ChatMessage>> _secretThreads = {};
   String? _pendingPersona;
 
   /// 같은 페르소나 파일을 동시에 두 번 쓰지 않게 순서대로 줄 세운다.
@@ -93,8 +101,27 @@ class ChatController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 지금 화면에 보일 대화 — 시크릿 모드면 시크릿 대화.
   List<ChatMessage> messages(String persona) =>
-      List.unmodifiable(_threads[persona] ?? const []);
+      List.unmodifiable(_current(persona) ?? const []);
+
+  List<ChatMessage>? _current(String persona) =>
+      isSecret(persona) ? _secretThreads[persona] : _threads[persona];
+
+  bool isSecret(String persona) => _secretThreads.containsKey(persona);
+
+  /// 시크릿 모드를 켜고 끈다. 끄면 시크릿 대화는 사라진다. 답을 기다리는 중에는 바꾸지 않는다
+  /// (대화창을 나갈 때는 [force] 로 끈다 — 늦게 온 답은 버려진 목록에 붙고 저장되지 않는다).
+  void setSecret(String persona, bool on, {bool force = false}) {
+    if (on == isSecret(persona)) return;
+    if (isPending(persona) && !force) return;
+    if (on) {
+      _secretThreads[persona] = [];
+    } else {
+      _secretThreads.remove(persona);
+    }
+    notifyListeners();
+  }
 
   /// 이 페르소나에 답변 대기 중인 요청이 있는지. 전송 버튼 비활성화용.
   bool isPending(String persona) => _pendingPersona == persona;
@@ -106,11 +133,12 @@ class ChatController extends ChangeNotifier {
     final q = question.trim();
     if (q.isEmpty || _pendingPersona != null) return;
 
-    final thread = _threads.putIfAbsent(persona, () => []);
+    final secret = isSecret(persona);
+    final thread = secret ? _secretThreads[persona]! : _threads.putIfAbsent(persona, () => []);
     thread.add(ChatMessage.user(q));
     _pendingPersona = persona;
     notifyListeners();
-    await _persist(persona);
+    if (!secret) await _persist(persona);
 
     try {
       final res = await _client.ask(persona, q);
@@ -121,11 +149,35 @@ class ChatController extends ChangeNotifier {
       _pendingPersona = null;
       notifyListeners();
     }
-    await _persist(persona);
+    if (!secret) await _persist(persona);
   }
 
-  /// 이 페르소나의 대화를 화면과 폰에서 모두 지운다.
+  /// 질문 하나와 그 답을 함께 지운다 (말풍선을 길게 눌러 지우기). [m] 은 질문이든 답이든 된다.
+  /// 답을 기다리는 마지막 질문은 지우지 않는다. 시크릿 대화면 저장하지 않는다.
+  Future<void> deleteExchange(String persona, ChatMessage m) async {
+    final thread = _current(persona);
+    if (thread == null) return;
+    final i = thread.indexOf(m);
+    if (i < 0) return;
+    var start = i, end = i + 1;
+    if (m.role == Role.user) {
+      if (i == thread.length - 1 && isPending(persona)) return;
+      if (end < thread.length && thread[end].role == Role.persona) end++;
+    } else if (i > 0 && thread[i - 1].role == Role.user) {
+      start = i - 1;
+    }
+    thread.removeRange(start, end);
+    notifyListeners();
+    if (!isSecret(persona)) await _persist(persona);
+  }
+
+  /// 이 페르소나의 대화를 화면과 폰에서 모두 지운다. 시크릿 모드면 시크릿 대화만 지운다.
   Future<void> clear(String persona) async {
+    if (isSecret(persona)) {
+      _secretThreads[persona]!.clear();
+      notifyListeners();
+      return;
+    }
     _threads.remove(persona);
     notifyListeners();
     final s = _storage;
