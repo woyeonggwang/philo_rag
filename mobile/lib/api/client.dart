@@ -85,6 +85,40 @@ class PhiloRagClient {
     return UsageInfo.fromJson(j as Map<String, dynamic>);
   }
 
+  /// GET /me — 사용자 ID 와 개발자 여부 (설정 화면의 신고 내역 메뉴).
+  Future<MeInfo> me() async {
+    final j = await _getJson('/me', const Duration(seconds: 10));
+    return MeInfo.fromJson(j as Map<String, dynamic>);
+  }
+
+  /// POST /reports — 대화 신고. 신고한 답과 그 질문을 함께 보낸다 (사용자 결정 2026-10-12).
+  Future<void> report({
+    required String persona,
+    required String reason,
+    String? detail,
+    required String question,
+    required String answer,
+    Map<String, dynamic>? extra,
+  }) async {
+    await _postJson(
+        '/reports',
+        {
+          'persona': persona,
+          'reason': reason,
+          'detail': detail,
+          'question': question,
+          'answer': answer,
+          'extra': extra,
+        },
+        const Duration(seconds: 15));
+  }
+
+  /// GET /reports — 신고 내역 (개발자만. 아니면 403).
+  Future<List<ReportItem>> reports() async {
+    final j = await _getJson('/reports', const Duration(seconds: 15));
+    return (j as List<dynamic>).map((e) => ReportItem.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   /// POST /ask — 앱이 보내는 것은 {persona, question} 뿐이다 (CLAUDE.md 2.1).
   Future<AskResponse> ask(String persona, String question) async {
     final j = await _postJson(

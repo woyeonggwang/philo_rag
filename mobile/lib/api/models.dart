@@ -198,3 +198,48 @@ class HealthResponse {
         llmModel: j['llm_model'] as String,
       );
 }
+
+/// GET /me — 요청한 사용자와 개발자 여부. 설정 화면이 신고 내역 메뉴를 보일지 정한다 (2026-10-12).
+class MeInfo {
+  final String userId;
+  final bool admin;
+
+  const MeInfo({required this.userId, required this.admin});
+
+  factory MeInfo.fromJson(Map<String, dynamic> j) =>
+      MeInfo(userId: j['user_id'] as String, admin: j['admin'] as bool? ?? false);
+}
+
+/// 대화 신고 한 건 (GET /reports — 개발자만). 신고한 질문·답이 함께 온다 (2026-10-12).
+class ReportItem {
+  final int id;
+  final DateTime createdAt;
+  final String userId;
+  final String persona;
+  final String reason;
+  final String? detail; // "기타" 직접 입력
+  final String question;
+  final String answer;
+
+  const ReportItem({
+    required this.id,
+    required this.createdAt,
+    required this.userId,
+    required this.persona,
+    required this.reason,
+    required this.detail,
+    required this.question,
+    required this.answer,
+  });
+
+  factory ReportItem.fromJson(Map<String, dynamic> j) => ReportItem(
+        id: j['id'] as int,
+        createdAt: DateTime.parse(j['created_at'] as String),
+        userId: j['user_id'] as String,
+        persona: j['persona'] as String,
+        reason: j['reason'] as String,
+        detail: j['detail'] as String?,
+        question: j['question'] as String,
+        answer: j['answer'] as String,
+      );
+}

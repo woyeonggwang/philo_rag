@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from . import auth, personas, plans, rag, retriever
+from . import auth, personas, plans, rag, reports, retriever
 from .config import get_settings
 
 logging.basicConfig(
@@ -88,6 +88,21 @@ class AskResponse(BaseModel):
     usage: UsageInfo | None = None      # 요금제와 오늘 사용량 (plans.py)
 
 
+class ReportRequest(BaseModel):
+    """대화 신고 (reports.py). 앱이 철학자의 답 하나와 그 질문을 사유와 함께 보낸다."""
+    persona: str = Field(..., examples=["jesus"])
+    reason: str = Field(..., min_length=1, max_length=100, examples=["예수의 사상과 맞지 않음"])
+    detail: str | None = Field(None, max_length=1000)       # "기타" 직접 입력
+    question: str = Field(..., max_length=4000)
+    answer: str = Field(..., min_length=1, max_length=10000)
+    extra: dict | None = None      # 근거 구절 위치·근거 여부 등 (앱이 붙인다)
+
+
+class MeInfo(BaseModel):
+    user_id: str
+    admin: bool                # 신고 내역을 볼 수 있는 개발자인지 (ADMIN_USERS)
+
+
 STATIC = Path(__file__).resolve().parent / "static"
 
 
@@ -121,6 +136,50 @@ def usage(authorization: str | None = Header(None, description="Bearer <Firebase
     except auth.AuthError as e:
         raise HTTPException(401, str(e))
     return plans.status(user_id).as_dict()
+
+
+def _identity(authorization: str | None, x_user_id: str | None) -> tuple[str, str | None]:
+    try:
+        return auth.resolve(authorization, x_user_id)
+    except plans.InvalidUserId as e:
+        raise HTTPException(400, str(e))
+    except auth.AuthError as e:
+        raise HTTPException(401, str(e))
+
+
+@app.get("/me", response_model=MeInfo)
+def me(authorization: str | None = Header(None, description="Bearer <Firebase ID 토큰>"),
+       x_user_id: str | None = Header(None, description="기기 ID. 로그인 토큰이 없을 때만 쓴다")):
+    """요청한 사용자와 개발자 여부. 앱 설정 화면이 신고 내역 메뉴를 보일지 정한다 (2026-10-12)."""
+    user_id, email = _identity(authorization, x_user_id)
+    return {"user_id": user_id, "admin": auth.is_admin(user_id, email)}
+
+
+@app.post("/reports")
+def create_report(req: ReportRequest,
+                  authorization: str | None = Header(None, description="Bearer <Firebase ID 토큰>"),
+                  x_user_id: str | None = Header(None, description="기기 ID. 로그인 토큰이 없을 때만 쓴다")):
+    """대화 신고 접수. 질문·답이 함께 저장된다 (사용자 결정 — 대화 내용 첨부)."""
+    user_id, _ = _identity(authorization, x_user_id)
+    try:
+        personas.get(req.persona)
+    except KeyError:
+        raise HTTPException(404, f"페르소나 '{req.persona}' 를 찾을 수 없습니다.")
+    rid = reports.add(user_id=user_id, persona=req.persona, reason=req.reason.strip(),
+                      detail=(req.detail or "").strip() or None, question=req.question,
+                      answer=req.answer, extra=req.extra)
+    log.info("대화 신고 #%d (%s, %s)", rid, req.persona, req.reason)
+    return {"id": rid}
+
+
+@app.get("/reports")
+def list_reports(authorization: str | None = Header(None, description="Bearer <Firebase ID 토큰>"),
+                 x_user_id: str | None = Header(None, description="기기 ID. 로그인 토큰이 없을 때만 쓴다")):
+    """신고 내역 (최근 200건). 개발자(ADMIN_USERS)만."""
+    user_id, email = _identity(authorization, x_user_id)
+    if not auth.is_admin(user_id, email):
+        raise HTTPException(403, "신고 내역은 개발자만 볼 수 있습니다.")
+    return reports.recent()
 
 
 @app.post("/ask", response_model=AskResponse)

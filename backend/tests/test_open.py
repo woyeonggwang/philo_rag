@@ -176,20 +176,27 @@ def _hit(ref, score, text):
             "division": 8, "division_title": "", "text": text, "score": score}
 
 
-def test_no_context_gives_near_passages_to_the_model_only(client, fake, monkeypatch):
-    """기준선 아래라도 가까운 구절(0.40 이상)은 모델에게 준다. 앱의 sources 에는 넣지 않는다 (사용자 결정 2026-10-12)."""
-    hits = [_hit("8:35~8:38", 0.422, "For whosoever will save his life shall lose it"),
-            _hit("24:20~24:35", 0.421, "But pray ye that your flight be not in the winter"),
-            _hit("9:1~9:17", 0.418, "Verily I say unto you"),
-            _hit("6:32~6:34", 0.414, "Take therefore no thought for the morrow"),
+def test_low_but_relevant_passages_go_to_the_normal_path(client, fake, monkeypatch):
+    """0.40 이상이면 보통 경로로 구절을 준다. 「바람직한 삶」(0.448)이 기준선 0.45 에 걸려 근거 없음으로 빠졌던 것 (2026-10-12)."""
+    hits = [_hit("6:17~6:31", 0.448, "lay up for yourselves treasures in heaven"),
+            _hit("6:32~6:44", 0.429, "seek ye first the kingdom of God"),
             _hit("5:1~5:20", 0.380, "unclean spirit")]
     monkeypatch.setattr(retriever, "search", lambda *a, **k: hits)
     f = fake(PRO_CON)
-    body = _ask(client, "jesus", "피터 틸이 이 세상에서의 영생을 이루려고 한다는데 어떻게 보십니까?")
+    body = _ask(client, "jesus", "바람직한 삶이란 무엇이라고 생각하십니까?")
     p = f.prompts[0]
-    assert "가까운 구절:" in p and "save his life shall lose it" in p
-    assert "Take therefore no thought" not in p          # 3개까지만
-    assert "unclean spirit" not in p                     # 0.40 미만은 안 준다
-    assert "맞지 않는 구절은 쓰지 마라" in p
+    assert p.startswith("구절:") and "treasures in heaven" in p and "kingdom of God" in p
+    assert "unclean spirit" not in p                     # 0.40 미만은 버린다
+    assert "이 질문에 맞는 구절이 없다" not in p
+    assert body["grounded"] is True and len(body["sources"]) == 2
+    assert f.temps == [None]                             # 보통 경로의 온도
+
+
+def test_model_declines_when_passages_do_not_answer(client, fake, monkeypatch):
+    """구절이 있어도 답이 안 되면 모델이 첫 문장으로 밝히고, 앱에는 근거 구절 없음으로 보인다."""
+    monkeypatch.setattr(retriever, "search", lambda *a, **k: [_hit("22:1~22:14", 0.442, "a marriage for his son")])
+    opener = personas.get("jesus").open_line
+    fake(opener + " " + PRO_CON)
+    body = _ask(client, "jesus", "오늘 점심 메뉴 추천해 주세요")
+    assert body["answer"].startswith(opener)
     assert body["grounded"] is False and body["sources"] == []
-    assert body["answer"].startswith(personas.get("jesus").open_line)

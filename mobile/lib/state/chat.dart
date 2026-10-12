@@ -171,6 +171,32 @@ class ChatController extends ChangeNotifier {
     if (!isSecret(persona)) await _persist(persona);
   }
 
+  /// 철학자의 답 [answer] 바로 앞의 질문. 없으면 빈 문자열 (오래된 질문이 200개 한도로 밀려난 경우).
+  String questionFor(String persona, ChatMessage answer) {
+    final thread = _current(persona) ?? const <ChatMessage>[];
+    final i = thread.indexOf(answer);
+    return i > 0 && thread[i - 1].role == Role.user ? thread[i - 1].text : '';
+  }
+
+  /// 대화 신고 (2026-10-12). 답과 그 질문, 근거 여부·근거 구절 위치를 함께 보낸다 (사용자 결정 — 대화 내용 첨부).
+  /// 실패하면 ApiException 을 그대로 올린다 (UI 가 알려 준다).
+  Future<void> report(String persona, ChatMessage answer, {required String reason, String? detail}) {
+    final r = answer.response;
+    return _client.report(
+      persona: persona,
+      reason: reason,
+      detail: detail,
+      question: questionFor(persona, answer),
+      answer: answer.text,
+      extra: {
+        'grounded': r?.grounded,
+        'safety': r?.safety,
+        'sources': [for (final s in r?.sources ?? const <Source>[]) s.label],
+        'secret': isSecret(persona),
+      },
+    );
+  }
+
   /// 이 페르소나의 대화를 화면과 폰에서 모두 지운다. 시크릿 모드면 시크릿 대화만 지운다.
   Future<void> clear(String persona) async {
     if (isSecret(persona)) {

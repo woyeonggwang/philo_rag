@@ -59,15 +59,20 @@ class Settings(BaseSettings):
 
     # 검색
     top_k: int = 5
-    min_score: float = 0.45               # 이보다 낮으면 근거 없음으로 본다 (2026-09-16 실측: 관련 0.49+, 무관 0.40-)
-    # 근거 없음 경로에서 "가까운 구절"로 모델에게만 주는 문턱과 개수 (CLAUDE.md 6.21, 2026-10-12)
-    open_min_score: float = 0.40
-    open_top_k: int = 3
+    # 이보다 낮은 구절은 버린다. 구절이 질문에 답하는지는 점수가 아니라 모델이 판단한다 (CLAUDE.md 6.21, 2026-10-12).
+    # 0.45 였을 때 예수 「바람직한 삶」(0.448)이 근거 없음으로 떨어졌다 — 예수는 답할 질문 0.448~ / 못 할 질문 ~0.442 로
+    # 점수만으로는 가를 수 없다. 니체·부처도 "점심 메뉴" 0.512, "진화론" 0.505 처럼 겹친다
+    min_score: float = 0.40
 
     # 요금제 (plans.py). 로그인이 없어 모든 사용자가 이 요금제를 받는다.
     # 테스트 단계라 pro(무제한). personal 로 바꾸면 하루 5건 제한이 걸린다
     default_plan: str = "pro"             # personal | pro
     usage_db: Path = BACKEND / "data" / "usage.db"   # 사용자·날짜별 질문 수 (gitignore)
+    reports_db: Path = BACKEND / "data" / "reports.db"  # 대화 신고 (reports.py, gitignore)
+
+    # 신고 내역을 볼 수 있는 개발자. 쉼표로 여럿. 사용자 ID(fb_<uid> 또는 기기 ID) 또는
+    # 이메일(인증된 이메일만 — 이메일 가입은 인증 메일이 없어 남의 주소로도 가입된다)
+    admin_users: str = ""
 
     # 로그인 (auth.py). Firebase 프로젝트 ID 로 앱이 보낸 로그인 토큰을 검증한다
     firebase_project_id: str = ""
@@ -86,4 +91,6 @@ def get_settings() -> Settings:
         s.index_dir = BACKEND / s.index_dir
     if not s.usage_db.is_absolute():
         s.usage_db = BACKEND / s.usage_db
+    if not s.reports_db.is_absolute():
+        s.reports_db = BACKEND / s.reports_db
     return s

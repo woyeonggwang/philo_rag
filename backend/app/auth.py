@@ -32,6 +32,11 @@ class AuthError(Exception):
 
 def verify_token(token: str) -> str:
     """Firebase ID 토큰을 검증하고 uid 를 돌려준다."""
+    return _verify(token)[0]
+
+
+def _verify(token: str) -> tuple[str, dict]:
+    """(uid, 토큰 내용)."""
     project = get_settings().firebase_project_id
     if not project:
         raise AuthError("서버에 FIREBASE_PROJECT_ID 가 설정되지 않아 로그인을 확인할 수 없습니다.")
@@ -45,7 +50,7 @@ def verify_token(token: str) -> str:
     uid = claims.get("sub") or claims.get("user_id")
     if not uid:
         raise AuthError("로그인 정보에 사용자 ID 가 없습니다.")
-    return uid
+    return uid, claims
 
 
 def user_key(uid: str) -> str:
@@ -57,11 +62,27 @@ def user_key(uid: str) -> str:
 
 def resolve_user(authorization: str | None, x_user_id: str | None) -> str:
     """요청한 사용자. 토큰이 있으면 계정, 없으면 (허용될 때만) 기기 ID."""
+    return resolve(authorization, x_user_id)[0]
+
+
+def resolve(authorization: str | None, x_user_id: str | None) -> tuple[str, str | None]:
+    """(사용자 ID, 인증된 이메일 또는 None). 이메일은 토큰이 email_verified 일 때만 준다 —
+    이메일 가입은 인증 메일을 보내지 않아 남의 주소로도 가입되기 때문이다 (CLAUDE.md 12절)."""
     if authorization:
         scheme, _, token = authorization.partition(" ")
         if scheme.lower() != "bearer" or not token.strip():
             raise AuthError("Authorization 헤더는 'Bearer <토큰>' 꼴이어야 합니다.")
-        return user_key(verify_token(token.strip()))
+        uid, claims = _verify(token.strip())
+        email = claims.get("email") if claims.get("email_verified") else None
+        return user_key(uid), email
     if get_settings().auth_required:
         raise AuthError("로그인이 필요합니다.")
-    return plans.normalize_user_id(x_user_id)
+    return plans.normalize_user_id(x_user_id), None
+
+
+def is_admin(user_id: str, email: str | None) -> bool:
+    """신고 내역을 볼 수 있는 개발자인가 (.env 의 ADMIN_USERS, 2026-10-12)."""
+    allowed = {a.strip().lower() for a in get_settings().admin_users.split(",") if a.strip()}
+    if user_id == plans.ANONYMOUS:
+        return False
+    return user_id.lower() in allowed or (email is not None and email.lower() in allowed)

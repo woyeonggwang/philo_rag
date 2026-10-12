@@ -48,8 +48,21 @@ class _Auth implements AuthBackend {
 http.Response _json(Object body) =>
     http.Response.bytes(utf8.encode(jsonEncode(body)), 200, headers: {'content-type': 'application/json'});
 
-PhiloRagClient _server() => PhiloRagClient('http://x', httpClient: MockClient((req) async {
+/// [admin] 이면 /me 가 개발자라고 답하고 /reports 가 신고를 돌려준다
+PhiloRagClient _server({bool admin = false}) => PhiloRagClient('http://x', httpClient: MockClient((req) async {
       switch (req.url.path) {
+        case '/me':
+          return _json({'user_id': 'u1', 'admin': admin});
+        case '/reports':
+          return admin
+              ? _json([
+                  {
+                    'id': 3, 'created_at': '2026-10-12T15:00:00+09:00', 'user_id': 'someone',
+                    'persona': 'jesus', 'reason': '예수의 사상과 맞지 않음', 'detail': null,
+                    'question': '바람직한 삶이란?', 'answer': '보라, 먼저 하나님의 나라를 구하라.', 'extra': null,
+                  }
+                ])
+              : http.Response('{"detail":"no"}', 403);
         case '/personas':
           return _json([
             {'key': 'nietzsche', 'name': '니체', 'blurb': '', 'enabled': true},
@@ -62,7 +75,7 @@ PhiloRagClient _server() => PhiloRagClient('http://x', httpClient: MockClient((r
       return http.Response('not found', 404);
     }));
 
-Future<(SettingsStore, _Auth)> _pump(WidgetTester t) async {
+Future<(SettingsStore, _Auth)> _pump(WidgetTester t, {bool admin = false}) async {
   t.view.physicalSize = const Size(400, 860);
   t.view.devicePixelRatio = 1;
   addTearDown(t.view.resetPhysicalSize);
@@ -73,7 +86,7 @@ Future<(SettingsStore, _Auth)> _pump(WidgetTester t) async {
   final backend = _Auth();
   final auth = AuthController(backend);
   backend.emit(const AppUser(uid: 'u1', email: 'me@example.com', provider: 'google.com'));
-  final client = _server();
+  final client = _server(admin: admin);
   await t.pumpWidget(MaterialApp(
     home: MainTabs(settings: settings, auth: auth, chat: ChatController(client), client: () => client),
   ));
@@ -171,5 +184,26 @@ void main() {
     expect(s.themeMode, ThemeMode.light);
     expect(s.textSize, TextSize.xlarge);
     expect(s.textSize.scale, 1.3);
+  });
+
+  testWidgets('일반 사용자에게는 신고 내역이 보이지 않는다', (t) async {
+    await _pump(t);
+    await t.tap(find.text('설정'));
+    await t.pumpAndSettle();
+    expect(find.byKey(const Key('reports')), findsNothing);
+  });
+
+  testWidgets('개발자에게는 신고 내역이 보이고, 누르면 질문·답과 함께 목록이 열린다', (t) async {
+    await _pump(t, admin: true);
+    await t.tap(find.text('설정'));
+    await t.pumpAndSettle();
+    await t.scrollUntilVisible(find.byKey(const Key('reports')), 200, scrollable: find.byType(Scrollable).last);
+    await t.tap(find.byKey(const Key('reports')));
+    await t.pumpAndSettle();
+    expect(find.text('예수 · 예수의 사상과 맞지 않음'), findsOneWidget);
+    await t.tap(find.text('예수 · 예수의 사상과 맞지 않음'));
+    await t.pumpAndSettle();
+    expect(find.text('바람직한 삶이란?'), findsOneWidget);
+    expect(find.text('보라, 먼저 하나님의 나라를 구하라.'), findsOneWidget);
   });
 }

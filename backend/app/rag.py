@@ -26,20 +26,16 @@ USER_TEMPLATE = """구절:
 # 그래서 (사용자 결정 2026-10-12)
 #  ① 반대편은 "세상 사람들의 생각"으로 소개하고 "그러나 나는"으로 자기 가르침을 말하게 한다
 #    (마 5:21 "너희가 들었으나 나는 너희에게 이르노니" 꼴. 니까야의 "어떤 사문·바라문들은 … 그러나 나는" 도 같은 꼴)
-#  ② 기준선(MIN_SCORE) 아래라도 가까운 구절(open_min_score 이상)을 같이 준다 — 피터 틸 영생 질문의 검색 1위
-#    막 8:35 "제 목숨을 구원하고자 하면 잃을 것이요"가 0.422 라 버려졌었다.
-NO_CONTEXT = """{near}질문: {question}
+#  ② 기준선(MIN_SCORE)을 0.45 → 0.40 으로 내리고, 구절이 질문에 답하는지는 모델이 판단한다 (personas._COMMON).
+#    답이 안 되면 모델이 open_line 으로 시작하고, 코드가 그것을 보고 근거 없음으로 표시한다 (_declined).
+#    점수만으로는 못 가른다 — 예수 「바람직한 삶」 0.448 이 「점심 메뉴」 0.442 와 붙어 있다.
+#    이 템플릿은 0.40 이상인 구절이 하나도 없을 때만 쓴다.
+NO_CONTEXT = """질문: {question}
 
-이 질문에 바로 답하는 구절은 없다. "직접 다룬 문제가 아니다"라는 첫 문장은 이미 앞에 붙는다. 다시 쓰지 말고 바로 이어서,
+이 질문에 맞는 구절이 없다. "직접 다룬 문제가 아니다"라는 첫 문장은 이미 앞에 붙는다. 다시 쓰지 말고 바로 이어서,
 세상 사람들의 생각을 먼저 말하고, "그러나 나는"으로 네 가르침에 비춘 생각을 말하라. "그러나 나는"은 한 번만 쓴다.
 네 가르침과 어긋나는 생각을 네 것으로 말하지 마라. "구절"이라는 말은 답에 쓰지 마라.
-{near_rule}있지도 않은 네 말을 인용하지 마라. 구체적인 투자·의료·법률 지시는 하지 마라."""
-
-NEAR_BLOCK = """가까운 구절:
-{passages}
-
-"""
-NEAR_RULE = "가까운 구절 가운데 질문과 맞는 것이 있으면 그 뜻에 기대라. 맞지 않는 구절은 쓰지 마라.\n"
+있지도 않은 네 말을 인용하지 마라. 구체적인 투자·의료·법률 지시는 하지 마라."""
 
 # ── 사이비·이단 (2026-10-12 사용자 결정) ──
 # 이런 질문은 찬반을 나누지 않고 무조건 경계하게 한다. 근거 구절은 검색이 아니라 문구로 고른다
@@ -103,6 +99,12 @@ def _classify(question: str) -> tuple[str, str]:
     if CULT_PATTERNS.search(question):
         return "미혹", "regex"
     return "일반", "llm"
+
+
+def _declined(persona, text: str) -> bool:
+    """모델이 "직접 다룬 문제가 아니다"(open_line 의 첫 문장)로 답을 시작했는가."""
+    first = persona.open_line.split(".")[0]
+    return text.lstrip().startswith(first)
 
 
 def _passages(hits) -> str:
@@ -195,14 +197,7 @@ def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
                 user += CULT_NOTE.format(cult_line=persona.cult_line)
         else:
             open_ = True
-            # 모델에게만 준다. sources 에는 넣지 않는다 — 앱이 "근거 구절 없음"과 "근거 구절 N개"를 함께 띄우게 된다
-            near = [h for h in hits if h["score"] >= s.open_min_score][:s.open_top_k]
-            log.info("[%s] 근거 없음 경로 — 가까운 구절 %d개 (%s)", persona_key, len(near),
-                     ", ".join(f"{retriever.ref_label(h)} {h['score']:.3f}" for h in near))
-            user = NO_CONTEXT.format(
-                near=NEAR_BLOCK.format(passages=_passages(near)) if near else "",
-                near_rule=NEAR_RULE if near else "",
-                question=question)
+            user = NO_CONTEXT.format(question=question)
 
     answer_text, retries = _generate(
         persona_key, persona, user, safety, s,
@@ -215,6 +210,10 @@ def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
         answer_text = SAFETY_NOTICE + "\n\n" + answer_text
     elif open_:
         answer_text = persona.open_line + " " + answer_text
+    elif kept and not cult and _declined(persona, answer_text):
+        # 구절은 있었지만 질문에 답하지 못한다고 모델이 판단했다 — 앱에는 근거 구절 없음으로 보인다
+        log.info("[%s] 구절이 질문에 답하지 못함 (모델 판단) — 근거 없음으로 표시", persona_key)
+        kept = []
 
     return {
         "persona": persona_key,

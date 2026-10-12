@@ -1,9 +1,10 @@
-// 질문 하나와 답 지우기(말풍선 길게 누르기)와 시크릿 모드 (2026-10-12, state/chat.dart · ui/chat_screen.dart).
+// 말풍선 메뉴(삭제·복사·대화내용 신고)와 시크릿 모드 (2026-10-12, state/chat.dart · ui/chat_screen.dart).
 // 서버는 MockClient, 저장은 임시 폴더.  실행: mobile 폴더에서  flutter test
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -12,8 +13,16 @@ import 'package:philo_rag/api/models.dart';
 import 'package:philo_rag/state/chat.dart';
 import 'package:philo_rag/state/chat_storage.dart';
 import 'package:philo_rag/ui/chat_screen.dart';
+import 'package:philo_rag/ui/incognito_icon.dart';
+
+/// 서버로 간 신고 (POST /reports 본문)
+final _reports = <Map<String, dynamic>>[];
 
 PhiloRagClient _server() => PhiloRagClient('http://x', httpClient: MockClient((req) async {
+      if (req.url.path == '/reports') {
+        _reports.add(jsonDecode(utf8.decode(req.bodyBytes)) as Map<String, dynamic>);
+        return http.Response('{"id": 1}', 200, headers: {'content-type': 'application/json'});
+      }
       final q = (jsonDecode(req.body) as Map)['question'] as String;
       return http.Response.bytes(
           utf8.encode(jsonEncode({
@@ -117,11 +126,13 @@ void main() {
       await t.pumpAndSettle();
     }
 
-    testWidgets('말풍선을 길게 누르면 확인 후 그 질문과 답만 지운다', (t) async {
+    testWidgets('말풍선을 길게 누르면 메뉴 → 삭제 → 확인 후 그 질문과 답만 지운다', (t) async {
       final chat = await pump(t);
       await ask(t, '첫째');
       await ask(t, '둘째');
       await t.longPress(find.text('답: 첫째'));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const ValueKey('menu-delete')));
       await t.pumpAndSettle();
       expect(find.text('이 질문과 답을 지울까요?'), findsOneWidget);
       await t.tap(find.widgetWithText(FilledButton, '지우기'));
@@ -139,6 +150,9 @@ void main() {
       await t.pumpAndSettle();
       expect(find.byKey(const Key('secret-banner')), findsOneWidget);
       expect(find.text('예수 · 시크릿'), findsOneWidget);
+      expect(find.byType(IncognitoIcon), findsWidgets); // 모자·안경 아이콘
+      // 크롬 시크릿 창처럼 어두운 화면
+      expect(Theme.of(t.element(find.byKey(const Key('secret-banner')))).brightness, Brightness.dark);
       expect(find.text('저장되는 질문'), findsNothing);
 
       await ask(t, '남기기 싫은 질문');
@@ -154,6 +168,69 @@ void main() {
       await t.pumpAndSettle();
       expect(chat.isSecret('jesus'), isFalse);
       expect(_texts(chat), ['저장되는 질문', '답: 저장되는 질문']);
+    });
+
+    testWidgets('메뉴: 답에는 삭제·복사·신고, 질문에는 삭제만', (t) async {
+      await pump(t);
+      await ask(t, '첫째');
+      await t.longPress(find.text('답: 첫째'));
+      await t.pumpAndSettle();
+      for (final k in ['delete', 'copy', 'report']) {
+        expect(find.byKey(ValueKey('menu-$k')), findsOneWidget);
+      }
+      await t.tapAt(const Offset(5, 5)); // 메뉴 닫기
+      await t.pumpAndSettle();
+      await t.longPress(find.text('첫째'));
+      await t.pumpAndSettle();
+      expect(find.byKey(const ValueKey('menu-delete')), findsOneWidget);
+      expect(find.byKey(const ValueKey('menu-copy')), findsNothing);
+      expect(find.byKey(const ValueKey('menu-report')), findsNothing);
+    });
+
+    testWidgets('복사는 철학자의 답 본문만', (t) async {
+      String? copied;
+      t.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') copied = (call.arguments as Map)['text'] as String;
+        return null;
+      });
+      addTearDown(() => t.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
+      await pump(t);
+      await ask(t, '첫째');
+      await t.longPress(find.text('답: 첫째'));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const ValueKey('menu-copy')));
+      await t.pumpAndSettle();
+      expect(copied, '답: 첫째');
+      expect(find.text('답변을 복사했습니다'), findsOneWidget);
+    });
+
+    testWidgets('신고: 사유를 고르면 질문·답과 함께 보낸다. 기타는 직접 적어야 보낼 수 있다', (t) async {
+      _reports.clear();
+      await pump(t);
+      await ask(t, '첫째');
+      await t.longPress(find.text('답: 첫째'));
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const ValueKey('menu-report')));
+      await t.pumpAndSettle();
+      expect(find.text('예수의 사상과 맞지 않음'), findsOneWidget);
+      expect(find.text('폭력적인 발화'), findsOneWidget);
+      FilledButton send() => t.widget<FilledButton>(find.byKey(const Key('report-send')));
+      expect(send().onPressed, isNull); // 고르기 전
+
+      await t.tap(find.text('기타 (직접 입력)'));
+      await t.pumpAndSettle();
+      expect(send().onPressed, isNull); // 기타는 내용이 있어야
+      await t.enterText(find.byKey(const Key('report-detail')), '말투가 이상합니다');
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const Key('report-send')));
+      await t.pumpAndSettle();
+
+      expect(find.text('신고가 접수되었습니다. 검토하겠습니다.'), findsOneWidget);
+      expect(_reports.single['reason'], '기타');
+      expect(_reports.single['detail'], '말투가 이상합니다');
+      expect(_reports.single['question'], '첫째');
+      expect(_reports.single['answer'], '답: 첫째');
+      expect(_reports.single['persona'], 'jesus');
     });
   });
 }

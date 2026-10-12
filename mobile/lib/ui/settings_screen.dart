@@ -1,5 +1,6 @@
 /// 설정 탭 (2026-10-12, 사용자 결정): 화면 테마(라이트/다크) · 글씨 크기 · 로그인 계정 · 남은 사용량 · 결제(준비 중).
 /// 디버그 빌드에는 서버 주소(개발용)도 있다 — 예전 바둑판의 계정 메뉴에서 옮겨 왔다. 디자인은 Codex 몫.
+/// 개발자(서버 .env 의 ADMIN_USERS)에게만 "개발자 · 신고 내역"이 보인다 (2026-10-12).
 library;
 
 import 'package:flutter/foundation.dart';
@@ -9,6 +10,7 @@ import '../api/client.dart';
 import '../api/models.dart';
 import '../state/auth.dart';
 import '../state/settings.dart';
+import 'reports_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   final SettingsStore settings;
@@ -35,16 +37,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _usageError;
   bool _usageLoading = false;
 
+  /// 신고 내역을 볼 수 있는 개발자인지. 서버가 정한다 (GET /me)
+  bool _admin = false;
+
   @override
   void initState() {
     super.initState();
     _loadUsage();
+    _loadMe();
   }
 
   @override
   void didUpdateWidget(SettingsScreen old) {
     super.didUpdateWidget(old);
-    if (old.refreshToken != widget.refreshToken) _loadUsage();
+    if (old.refreshToken != widget.refreshToken) {
+      _loadUsage();
+      _loadMe();
+    }
+  }
+
+  /// 실패하면(옛 서버·연결 안 됨) 개발자 메뉴를 그냥 숨긴다
+  Future<void> _loadMe() async {
+    final c = widget.client();
+    try {
+      final me = await c.me();
+      if (mounted) setState(() => _admin = me.admin);
+    } on ApiException {
+      if (mounted) setState(() => _admin = false);
+    } finally {
+      c.close();
+    }
   }
 
   Future<void> _loadUsage() async {
@@ -224,6 +246,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: const Text('결제 (준비 중)'),
                 ),
               ),
+              if (_admin) ...[
+                const _Header('개발자'),
+                ListTile(
+                  key: const Key('reports'),
+                  leading: const Icon(Icons.flag_outlined),
+                  title: const Text('신고 내역'),
+                  subtitle: const Text('사용자가 신고한 대화 (개발자만 보임)'),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => ReportsScreen(client: widget.client)),
+                  ),
+                ),
+              ],
               if (kDebugMode) ...[
                 const _Header('개발용'),
                 ListTile(

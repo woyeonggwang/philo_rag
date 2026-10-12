@@ -1,12 +1,18 @@
 /// 한 철학자와의 대화창 (2026-10-10). 철학자 바둑판에서 누르면 열린다. 디자인은 Codex 몫.
 /// 대화 내용은 ChatController 가 폰에 저장하므로(페르소나당 200개) 나갔다 들어와도 남아 있다.
-/// 말풍선을 길게 누르면 그 질문과 답을 지운다. 위쪽 눈 아이콘은 시크릿 모드 — 저장하지 않고, 이 화면을 나가면 사라진다 (2026-10-12).
+/// 말풍선을 길게 누르면(PC 는 오른쪽 클릭) 삭제·복사·대화내용 신고 메뉴가 뜬다. 복사·신고는 철학자의 답에만 있다.
+/// 위쪽 모자·안경 아이콘은 시크릿 모드 — 저장하지 않고, 이 화면을 나가면 사라진다. 켜면 화면이 어두워진다 (2026-10-12).
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../api/client.dart';
 import '../api/models.dart';
 import '../state/chat.dart';
+import 'app_theme.dart';
+import 'incognito_icon.dart';
+import 'report_dialog.dart';
 import 'source_tile.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -79,7 +85,58 @@ class _ChatScreenState extends State<ChatScreen> {
     if (ok == true) await widget.chat.clear(_key);
   }
 
-  /// 말풍선을 길게 눌렀을 때 — 그 질문과 답을 함께 지운다
+  /// 말풍선을 길게 눌렀을 때(또는 오른쪽 클릭) 누른 자리에 뜨는 메뉴 — 삭제 · 복사 · 대화내용 신고 (사용자 결정 2026-10-12)
+  Future<void> _showMenu(ChatMessage m, Offset at, {required bool deletable}) async {
+    final isAnswer = m.role == Role.persona && !m.isError && m.response != null;
+    final items = <PopupMenuEntry<String>>[
+      if (deletable) _menuItem('delete', Icons.delete_outline, '삭제'),
+      if (isAnswer) _menuItem('copy', Icons.copy_outlined, '복사'),
+      if (isAnswer) _menuItem('report', Icons.flag_outlined, '대화내용 신고'),
+    ];
+    if (items.isEmpty) return;
+    final overlay = Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final choice = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(at & const Size(1, 1), Offset.zero & overlay.size),
+      items: items,
+    );
+    if (!mounted) return;
+    switch (choice) {
+      case 'delete':
+        await _confirmDelete(m);
+      case 'copy':
+        await _copy(m);
+      case 'report':
+        await _report(m);
+    }
+  }
+
+  static PopupMenuItem<String> _menuItem(String value, IconData icon, String label) => PopupMenuItem<String>(
+        key: ValueKey('menu-$value'),
+        value: value,
+        child: Row(children: [Icon(icon, size: 20), const SizedBox(width: 12), Text(label)]),
+      );
+
+  /// 철학자의 답 본문만 복사한다 (질문·용어 풀이·근거 구절은 빼고 — 사용자 결정)
+  Future<void> _copy(ChatMessage m) async {
+    await Clipboard.setData(ClipboardData(text: bubbleText(m)));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('답변을 복사했습니다')));
+  }
+
+  Future<void> _report(ChatMessage m) async {
+    final picked = await showReportDialog(context, personaName: widget.persona.name);
+    if (picked == null || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await widget.chat.report(_key, m, reason: picked.reason, detail: picked.detail);
+      messenger.showSnackBar(const SnackBar(content: Text('신고가 접수되었습니다. 검토하겠습니다.')));
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('신고를 보내지 못했습니다: $e')));
+    }
+  }
+
+  /// 삭제를 골랐을 때 — 그 질문과 답을 함께 지운다
   Future<void> _confirmDelete(ChatMessage m) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -120,6 +177,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 시크릿 모드는 크롬 시크릿 창처럼 어두운 화면으로 (사용자 요청 2026-10-12)
+    if (!widget.chat.isSecret(_key)) return _scaffold(context);
+    return Theme(data: AppTheme.dark, child: Builder(builder: _scaffold));
+  }
+
+  Widget _scaffold(BuildContext context) {
     final theme = Theme.of(context);
     final secret = widget.chat.isSecret(_key);
     final pending = widget.chat.isPending(_key);
@@ -132,8 +195,9 @@ class _ChatScreenState extends State<ChatScreen> {
             key: const Key('secret'),
             tooltip: secret ? '시크릿 모드 끄기' : '시크릿 모드',
             isSelected: secret,
-            icon: const Icon(Icons.visibility_off_outlined),
-            selectedIcon: const Icon(Icons.visibility_off),
+            // 켜져 있으면 동그란 바탕으로 표시
+            style: secret ? IconButton.styleFrom(backgroundColor: theme.colorScheme.surfaceContainerHighest) : null,
+            icon: const IncognitoIcon(),
             onPressed: pending ? null : _toggleSecret,
           ),
           IconButton(tooltip: '이 대화 지우기', icon: const Icon(Icons.delete_outline), onPressed: _confirmClear),
@@ -147,8 +211,14 @@ class _ChatScreenState extends State<ChatScreen> {
               width: double.infinity,
               color: theme.colorScheme.surfaceContainerHighest,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: Text('시크릿 모드 — 이 대화는 폰에 저장되지 않고, 이 화면을 나가면 사라집니다.',
-                  style: theme.textTheme.bodySmall),
+              child: Row(children: [
+                const IncognitoIcon(size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text('시크릿 모드 — 이 대화는 폰에 저장되지 않고, 이 화면을 나가면 사라집니다.',
+                      style: theme.textTheme.bodySmall),
+                ),
+              ]),
             ),
           Expanded(
             child: ListenableBuilder(
@@ -161,10 +231,18 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: Padding(
                       padding: const EdgeInsets.all(32),
                       child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        Text('${widget.persona.name}에게 물어보세요.', style: theme.textTheme.titleMedium),
-                        const SizedBox(height: 8),
-                        Text(secret ? '여기서 나눈 대화는 남지 않습니다.' : widget.persona.blurb,
-                            style: theme.textTheme.bodySmall, textAlign: TextAlign.center),
+                        if (secret) ...[
+                          const IncognitoIcon(size: 56),
+                          const SizedBox(height: 16),
+                          Text('시크릿 모드', style: theme.textTheme.titleLarge),
+                          const SizedBox(height: 8),
+                          Text('여기서 나눈 대화는 폰에 저장되지 않고,\n이 화면을 나가면 사라집니다.',
+                              style: theme.textTheme.bodySmall, textAlign: TextAlign.center),
+                        ] else ...[
+                          Text('${widget.persona.name}에게 물어보세요.', style: theme.textTheme.titleMedium),
+                          const SizedBox(height: 8),
+                          Text(widget.persona.blurb, style: theme.textTheme.bodySmall, textAlign: TextAlign.center),
+                        ],
                       ]),
                     ),
                   );
@@ -185,7 +263,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     final deletable = !(pending && i == msgs.length - 1);
                     return GestureDetector(
                       key: ValueKey('msg-$i'),
-                      onLongPress: deletable ? () => _confirmDelete(m) : null,
+                      onLongPressStart: (d) => _showMenu(m, d.globalPosition, deletable: deletable),
+                      onSecondaryTapUp: (d) => _showMenu(m, d.globalPosition, deletable: deletable),
                       child: MessageBubble(m),
                     );
                   },
@@ -260,9 +339,8 @@ class MessageBubble extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (r != null && r.safety) Text('안전 안내가 포함된 답변', style: theme.textTheme.labelSmall),
-            // 문장 끝 공백 두 칸 + 줄바꿈(마크다운 줄바꿈)은 정리해서 보여준다 (CLAUDE.md 12절)
             Text(
-              m.text.replaceAll(RegExp(r'[ \t]+\n'), '\n').trim(),
+              bubbleText(m),
               style: TextStyle(color: isSent ? Colors.white : theme.colorScheme.onSurface),
             ),
             if (r != null && r.glossary.isNotEmpty) ...[
@@ -280,3 +358,6 @@ class MessageBubble extends StatelessWidget {
     );
   }
 }
+
+/// 말풍선에 보이는 글 (복사할 때도 이것). 문장 끝 공백 두 칸 + 줄바꿈(마크다운 줄바꿈)은 정리한다 (CLAUDE.md 12절)
+String bubbleText(ChatMessage m) => m.text.replaceAll(RegExp(r'[ \t]+\n'), '\n').trim();
