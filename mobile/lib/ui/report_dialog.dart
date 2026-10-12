@@ -1,5 +1,6 @@
 /// 대화내용 신고 창 (2026-10-12, 사용자 결정). 철학자의 답을 길게 눌러 "대화내용 신고"를 고르면 열린다.
 /// 사유 하나를 고르고, "기타"는 직접 적는다. 보내면 그 질문과 답이 함께 개발자에게 간다 (설정 → 신고 내역).
+/// 대화 내용이 개발자에게 제공된다는 데 동의해야 보낼 수 있다 (사용자 결정 2026-10-12).
 library;
 
 import 'package:flutter/material.dart';
@@ -36,6 +37,7 @@ class _ReportDialog extends StatefulWidget {
 class _ReportDialogState extends State<_ReportDialog> {
   final _detail = TextEditingController();
   String? _reason;
+  bool _agreed = false;
 
   @override
   void dispose() {
@@ -43,7 +45,8 @@ class _ReportDialogState extends State<_ReportDialog> {
     super.dispose();
   }
 
-  bool get _ready => _reason != null && (_reason != reportOther || _detail.text.trim().isNotEmpty);
+  bool get _ready =>
+      _agreed && _reason != null && (_reason != reportOther || _detail.text.trim().isNotEmpty);
 
   @override
   Widget build(BuildContext context) {
@@ -80,9 +83,15 @@ class _ReportDialogState extends State<_ReportDialog> {
                     decoration: const InputDecoration(hintText: '신고 사유를 적어 주세요'),
                   ),
                 ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: Text('신고하면 이 질문과 답이 개발자에게 전송됩니다.', style: theme.textTheme.bodySmall),
+              const Divider(),
+              CheckboxListTile(
+                key: const Key('report-agree'),
+                value: _agreed,
+                onChanged: (v) => setState(() => _agreed = v ?? false),
+                controlAffinity: ListTileControlAffinity.leading,
+                dense: true,
+                title: const Text('신고한 질문과 답(대화 내용)이 확인을 위해 개발자에게 제공되는 것에 동의합니다.'),
+                subtitle: Text('동의해야 신고할 수 있습니다.', style: theme.textTheme.bodySmall),
               ),
             ],
           ),

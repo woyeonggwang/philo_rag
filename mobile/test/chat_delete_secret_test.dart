@@ -204,7 +204,7 @@ void main() {
       expect(find.text('답변을 복사했습니다'), findsOneWidget);
     });
 
-    testWidgets('신고: 사유를 고르면 질문·답과 함께 보낸다. 기타는 직접 적어야 보낼 수 있다', (t) async {
+    testWidgets('신고: 사유를 고르고 대화 내용 제공에 동의하면 질문·답과 함께 보낸다. 기타는 직접 적어야 한다', (t) async {
       _reports.clear();
       await pump(t);
       await ask(t, '첫째');
@@ -222,6 +222,12 @@ void main() {
       expect(send().onPressed, isNull); // 기타는 내용이 있어야
       await t.enterText(find.byKey(const Key('report-detail')), '말투가 이상합니다');
       await t.pumpAndSettle();
+      expect(send().onPressed, isNull); // 대화 내용 제공에 동의해야
+      await t.ensureVisible(find.byKey(const Key('report-agree'))); // 창 안에서 아래쪽
+      await t.pumpAndSettle();
+      await t.tap(find.byKey(const Key('report-agree')));
+      await t.pumpAndSettle();
+      expect(send().onPressed, isNotNull);
       await t.tap(find.byKey(const Key('report-send')));
       await t.pumpAndSettle();
 
