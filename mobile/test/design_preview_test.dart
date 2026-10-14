@@ -276,6 +276,10 @@ void main() {
         waiting.complete();
         waiting = null;
         await t.pumpAndSettle();
+        // 답의 근거는 기본으로 접혀 있다 (2026-10-14 사용자 요청으로 접기를 되살림) — 펼쳐서 찍는다
+        expect(findText('답의 근거 ${_sources.length}곳'), findsOneWidget);
+        await t.tap(find.byKey(const Key('sources-toggle')));
+        await t.pumpAndSettle();
         expect(findText(_sources.first.label), findsOneWidget);
         expect(find.byType(PersonaPortrait), findsOneWidget);
         await capture('chat-sources');

@@ -20,7 +20,7 @@ Flutter의 실제 화면 위젯을 테스트 환경에서 PNG로 렌더링했습
 | 철학자 바둑판 | [보기](persona-grid-dark.png) | [보기](persona-grid-light.png) |
 | 빈 대화 | [보기](chat-empty-dark.png) | [보기](chat-empty-light.png) |
 | 답 기다림 | [보기](chat-waiting-dark.png) | [보기](chat-waiting-light.png) |
-| 답과 원전 출처 | [보기](chat-sources-dark.png) | [보기](chat-sources-light.png) |
+| 답과 답의 근거 (펼친 상태) | [보기](chat-sources-dark.png) | [보기](chat-sources-light.png) |
 | 말풍선 메뉴 | [보기](chat-menu-dark.png) | [보기](chat-menu-light.png) |
 | 질문·답 삭제 확인 | [보기](confirm-delete-dark.png) | [보기](confirm-delete-light.png) |
 | 전체 삭제 확인 | [보기](confirm-clear-dark.png) | [보기](confirm-clear-light.png) |

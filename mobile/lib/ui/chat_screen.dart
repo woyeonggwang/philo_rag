@@ -448,7 +448,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-/// 말풍선 하나. 철학자의 초상·이름과 원전 출처가 바로 보인다.
+/// 말풍선 하나. 철학자의 초상·이름이 보이고, 답의 근거는 한 줄로 접혀 있다가 누르면 펼쳐진다.
 class MessageBubble extends StatelessWidget {
   final ChatMessage m;
   final String? personaName;
