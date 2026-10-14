@@ -13,6 +13,7 @@ import '../state/settings.dart';
 import 'reports_screen.dart';
 import 'keep_words.dart';
 import 'app_theme.dart';
+import 'brand_widgets.dart';
 
 class SettingsScreen extends StatefulWidget {
   final SettingsStore settings;
@@ -163,7 +164,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Theme(
-      data: AppTheme.withDefaultFont(Theme.of(context)),
+      data: Theme.of(context),
       child: Builder(builder: _buildContent),
     );
   }
@@ -178,123 +179,171 @@ class _SettingsScreenState extends State<SettingsScreen> {
         builder: (context, _) {
           final user = widget.auth.user;
           return ListView(
-            padding: const EdgeInsets.only(bottom: 24),
+            padding: const EdgeInsets.all(AppTheme.pageInset),
             children: [
-              const _Header('화면'),
-              ListTile(
-                title: const Text('테마'),
-                trailing: SegmentedButton<ThemeMode>(
-                  key: const Key('theme'),
-                  showSelectedIcon: false,
-                  segments: const [
-                    ButtonSegment(value: ThemeMode.light, label: Text('라이트')),
-                    ButtonSegment(value: ThemeMode.dark, label: Text('다크')),
-                  ],
-                  selected: {s.themeMode},
-                  onSelectionChanged: (v) => s.setThemeMode(v.first),
-                ),
+              SettingsGroup(
+                title: '화면',
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(AppTheme.pageInset),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text('테마', style: theme.textTheme.bodyMedium),
+                        const SizedBox(height: 10),
+                        SegmentedButton<ThemeMode>(
+                          key: const Key('theme'),
+                          showSelectedIcon: false,
+                          segments: const [
+                            ButtonSegment(
+                              value: ThemeMode.light,
+                              label: Text('라이트'),
+                            ),
+                            ButtonSegment(
+                              value: ThemeMode.dark,
+                              label: Text('다크'),
+                            ),
+                          ],
+                          selected: {s.themeMode},
+                          onSelectionChanged: (v) => s.setThemeMode(v.first),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  Padding(
+                    padding: const EdgeInsets.all(AppTheme.pageInset),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text('글씨 크기', style: theme.textTheme.bodyMedium),
+                        const SizedBox(height: 10),
+                        LayoutBuilder(
+                          builder: (context, constraints) =>
+                              SegmentedButton<TextSize>(
+                                key: const Key('text-size'),
+                                direction:
+                                    constraints.maxWidth < 340 &&
+                                        MediaQuery.textScalerOf(context)
+                                                .scale(14) >
+                                            16
+                                    ? Axis.vertical
+                                    : Axis.horizontal,
+                                showSelectedIcon: false,
+                                segments: [
+                                  for (final t in TextSize.values)
+                                    ButtonSegment(
+                                      value: t,
+                                      label: Text(t.label),
+                                    ),
+                                ],
+                                selected: {s.textSize},
+                                onSelectionChanged: (v) =>
+                                    s.setTextSize(v.first),
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const ListTile(title: Text('글씨 크기')),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: SegmentedButton<TextSize>(
-                  key: const Key('text-size'),
-                  showSelectedIcon: false,
-                  segments: [
-                    for (final t in TextSize.values)
-                      ButtonSegment(value: t, label: Text(t.label)),
-                  ],
-                  selected: {s.textSize},
-                  onSelectionChanged: (v) => s.setTextSize(v.first),
-                ),
+              SettingsGroup(
+                title: '계정',
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.account_circle_outlined),
+                    title: Text(user?.label ?? '로그인 안 됨'),
+                    // 개발용 우회는 이름 자체가 "개발용 (로그인 안 함)" 이라 아래 줄을 붙이지 않는다
+                    subtitle: user == null || user.provider == 'dev'
+                        ? null
+                        : Text(
+                            [
+                              _providerLabel(user.provider),
+                              if (user.email != null &&
+                                  user.email != user.label)
+                                user.email!,
+                            ].join(' · '),
+                          ),
+                  ),
+                  // 로그인 화면을 가린 동안 "로그인 없이 사용 중"인 사람에게는 로그아웃이 의미가 없다 (눌러도 다시 들어온다)
+                  if (!(user?.isDev ?? false) || loginScreenEnabled)
+                    ListTile(
+                      key: const Key('signout'),
+                      leading: const Icon(Icons.logout),
+                      title: const Text('로그아웃'),
+                      onTap: _confirmSignOut,
+                    ),
+                ],
               ),
-              const _Header('계정'),
-              ListTile(
-                leading: const Icon(Icons.account_circle_outlined),
-                title: Text(user?.label ?? '로그인 안 됨'),
-                // 개발용 우회는 이름 자체가 "개발용 (로그인 안 함)" 이라 아래 줄을 붙이지 않는다
-                subtitle: user == null || user.provider == 'dev'
-                    ? null
-                    : Text(
-                        [
-                          _providerLabel(user.provider),
-                          if (user.email != null && user.email != user.label)
-                            user.email!,
-                        ].join(' · '),
-                      ),
-              ),
-              // 로그인 화면을 가린 동안 "로그인 없이 사용 중"인 사람에게는 로그아웃이 의미가 없다 (눌러도 다시 들어온다)
-              if (!(user?.isDev ?? false) || loginScreenEnabled)
-                ListTile(
-                  key: const Key('signout'),
-                  leading: const Icon(Icons.logout),
-                  title: const Text('로그아웃'),
-                  onTap: _confirmSignOut,
-                ),
-              const _Header('사용량'),
-              ListTile(
-                key: const Key('usage'),
-                leading: const Icon(Icons.data_usage),
-                title: Text(_usage == null ? '요금제' : '${_usage!.planName} 요금제'),
-                subtitle: Text(
-                  _usageLoading && _usage == null
-                      ? '불러오는 중…'
-                      : _usageError ??
-                            (_usage == null ? '' : _usageText(_usage!)),
-                ),
-                trailing: IconButton(
-                  tooltip: '다시 읽기',
-                  icon: const Icon(Icons.refresh),
-                  onPressed: _usageLoading ? null : _loadUsage,
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                // 결제 기능은 아직 없다 (사용자 결정 2026-10-12: 버튼만 두고 비활성화)
-                child: FilledButton(
-                  key: const Key('pay'),
-                  onPressed: null,
-                  child: const Text('결제 (준비 중)'),
-                ),
+              SettingsGroup(
+                title: '사용량',
+                children: [
+                  ListTile(
+                    key: const Key('usage'),
+                    leading: const Icon(Icons.data_usage),
+                    title: Text(
+                      _usage == null ? '요금제' : '${_usage!.planName} 요금제',
+                    ),
+                    subtitle: Text(
+                      _usageLoading && _usage == null
+                          ? '불러오는 중…'
+                          : _usageError ??
+                                (_usage == null ? '' : _usageText(_usage!)),
+                    ),
+                    trailing: IconButton(
+                      tooltip: '다시 읽기',
+                      icon: const Icon(Icons.refresh),
+                      onPressed: _usageLoading ? null : _loadUsage,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    // 결제 기능은 아직 없다 (사용자 결정 2026-10-12: 버튼만 두고 비활성화)
+                    child: FilledButton(
+                      key: const Key('pay'),
+                      onPressed: null,
+                      child: const Text('결제 (준비 중)'),
+                    ),
+                  ),
+                ],
               ),
               if (_admin) ...[
-                const _Header('개발자'),
-                ListTile(
-                  key: const Key('reports'),
-                  leading: const Icon(Icons.flag_outlined),
-                  title: const Text('신고 내역'),
-                  subtitle: const Text('사용자가 신고한 대화 (개발자만 보임)'),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(builder: (_) => ReportsScreen(client: widget.client)),
-                  ),
+                SettingsGroup(
+                  title: '개발자',
+                  children: [
+                    ListTile(
+                      key: const Key('reports'),
+                      leading: const Icon(Icons.flag_outlined),
+                      title: const Text('신고 내역'),
+                      subtitle: const Text('사용자가 신고한 대화 (개발자만 보임)'),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => ReportsScreen(client: widget.client),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
               if (kDebugMode) ...[
-                const _Header('개발용'),
-                ListTile(
-                  leading: const Icon(Icons.dns_outlined),
-                  title: const Text('서버 주소'),
-                  subtitle: Text(s.baseUrl),
-                  onTap: _editServer,
+                SettingsGroup(
+                  title: '개발용',
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.dns_outlined),
+                      title: const Text('서버 주소'),
+                      subtitle: Text(s.baseUrl),
+                      onTap: _editServer,
+                    ),
+                  ],
                 ),
               ],
               const SizedBox(height: 8),
-              Center(child: Text('쉼표,', style: theme.textTheme.bodySmall)),
+              Center(child: Text('쉼표,', style: theme.textTheme.titleMedium)),
             ],
           );
         },
       ),
     );
   }
-}
-
-class _Header extends StatelessWidget {
-  final String text;
-  const _Header(this.text);
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 24, 16, 4),
-    child: Text(text, style: Theme.of(context).textTheme.labelLarge),
-  );
 }

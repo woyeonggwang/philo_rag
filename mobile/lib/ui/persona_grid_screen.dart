@@ -83,9 +83,11 @@ class _PersonaGridScreenState extends State<PersonaGridScreen> {
         if (!mounted || id != _loadId) return;
         // 서버가 아예 안 떠 있거나 켜지는 중이면 잠시 뒤 다시. 서버가 오류를 돌려준 거면 기다려도 소용없다
         if (!e.isConnectionError || attempt == widget.maxAttempts) {
-          setState(() => _error = e.isConnectionError
-              ? '서버에 연결하지 못했습니다.\n서버가 켜져 있는지 확인하세요.'
-              : '철학자 목록을 받지 못했습니다.\n$e');
+          setState(
+            () => _error = e.isConnectionError
+                ? '서버에 연결하지 못했습니다.\n서버가 켜져 있는지 확인하세요.'
+                : '철학자 목록을 받지 못했습니다.\n$e',
+          );
           return;
         }
         await Future<void>.delayed(widget.retryDelay);
@@ -97,12 +99,11 @@ class _PersonaGridScreenState extends State<PersonaGridScreen> {
   }
 
   void _open(Persona p) {
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (context) => Theme(
-        data: AppTheme.withDefaultFont(Theme.of(context)),
-        child: ChatScreen(persona: p, chat: widget.chat),
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => ChatScreen(persona: p, chat: widget.chat),
       ),
-    ));
+    );
   }
 
   @override
@@ -127,11 +128,14 @@ class _PersonaGridScreenState extends State<PersonaGridScreen> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(_error!, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            FilledButton(onPressed: _load, child: const Text('다시 시도')),
-          ]),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_error!, textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              FilledButton(onPressed: _load, child: const Text('다시 시도')),
+            ],
+          ),
         ),
       );
     }
@@ -139,45 +143,76 @@ class _PersonaGridScreenState extends State<PersonaGridScreen> {
     if (ps == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    return GridView.count(
-      crossAxisCount: 2,
-      padding: const EdgeInsets.all(16),
-      mainAxisSpacing: 16,
-      crossAxisSpacing: 16,
-      childAspectRatio: 0.78,
+    return ListView(
+      key: const Key('persona-grid'),
+      padding: const EdgeInsets.all(AppTheme.pageInset),
       children: [
-        for (final p in ps)
-          Card(
-            key: ValueKey('persona-${p.key}'),
-            clipBehavior: Clip.antiAlias,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
-              side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.6)),
-            ),
-            child: InkWell(
-              onTap: () => _open(p),
-              child: Semantics(
-                label: '${p.name}에게 물어보기',
-                child: Ink(
-                  decoration: BoxDecoration(
-                    gradient: RadialGradient(
-                      center: const Alignment(0, -0.3),
-                      radius: 1.1,
-                      colors: [
-                        Theme.of(context).colorScheme.surfaceContainerHigh,
-                        Theme.of(context).colorScheme.surface,
+        for (var i = 0; i < ps.length; i += 2)
+          Padding(
+            padding: const EdgeInsets.only(bottom: AppTheme.pageInset),
+            child: i + 1 == ps.length
+                ? _card(context, ps[i], wide: true)
+                : IntrinsicHeight(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(child: _card(context, ps[i])),
+                        const SizedBox(width: AppTheme.pageInset),
+                        Expanded(child: _card(context, ps[i + 1])),
                       ],
                     ),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
-                    child: PersonaVisual(name: p.name),
-                  ),
-                ),
-              ),
-            ),
           ),
       ],
+    );
+  }
+
+  Widget _card(BuildContext context, Persona p, {bool wide = false}) {
+    final theme = Theme.of(context);
+    final caption = Padding(
+      padding: const EdgeInsets.all(AppTheme.pageInset),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(p.name, style: theme.textTheme.titleLarge),
+          if (p.blurb.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(p.blurb, style: theme.textTheme.bodySmall),
+          ],
+        ],
+      ),
+    );
+    return Card(
+      key: ValueKey('persona-${p.key}'),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _open(p),
+        child: Semantics(
+          label: '${p.name}에게 물어보기',
+          child: wide
+              ? Row(
+                  children: [
+                    SizedBox(
+                      width: 140,
+                      height: 160,
+                      child: PersonaVisual(name: p.name),
+                    ),
+                    Expanded(child: caption),
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    AspectRatio(
+                      aspectRatio: 0.9,
+                      child: PersonaVisual(name: p.name),
+                    ),
+                    caption,
+                  ],
+                ),
+        ),
+      ),
     );
   }
 }
@@ -186,13 +221,25 @@ class _PersonaGridScreenState extends State<PersonaGridScreen> {
 class PersonaVisual extends StatefulWidget {
   final String name;
   final Widget? illustration;
-  const PersonaVisual({super.key, required this.name, this.illustration});
+  final bool faceOnly;
+  const PersonaVisual({
+    super.key,
+    required this.name,
+    this.illustration,
+    this.faceOnly = false,
+  });
 
   @override
   State<PersonaVisual> createState() => _PersonaVisualState();
 }
 
 class _PersonaVisualState extends State<PersonaVisual> {
+  // 말풍선마다 원본을 다시 디코딩하지 않는다. clone은 같은 이미지 메모리를
+  // 공유하며, 각 위젯은 자기 핸들만 dispose한다.
+  static Future<ui.Image>? _darkAsset;
+  static Future<ui.Image>? _lightAsset;
+  static ui.Image? _sharedDark;
+  static ui.Image? _sharedLight;
   ui.Image? _image;
   ui.Image? _lightImage;
 
@@ -203,23 +250,43 @@ class _PersonaVisualState extends State<PersonaVisual> {
   }
 
   Future<void> _load() async {
-    await Future.wait([_loadAsset(portraitDarkAsset, false), _loadAsset(portraitLightAsset, true)]);
+    await Future.wait([
+      _loadAsset(portraitDarkAsset, false),
+      _loadAsset(portraitLightAsset, true),
+    ]);
+  }
+
+  static Future<ui.Image> _decodeAsset(String asset) async {
+    final data = await rootBundle.load(asset);
+    final codec = await ui.instantiateImageCodec(
+      data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+    );
+    final frame = await codec.getNextFrame();
+    codec.dispose();
+    return frame.image;
   }
 
   Future<void> _loadAsset(String asset, bool light) async {
-    final data = await rootBundle.load(asset);
-    final codec = await ui.instantiateImageCodec(data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes));
-    final frame = await codec.getNextFrame();
-    codec.dispose();
+    var original = light ? _sharedLight : _sharedDark;
+    if (original == null) {
+      original = await (light
+          ? _lightAsset ??= _decodeAsset(asset)
+          : _darkAsset ??= _decodeAsset(asset));
+      if (light) {
+        _sharedLight = original;
+      } else {
+        _sharedDark = original;
+      }
+    }
     if (!mounted) {
-      frame.image.dispose();
       return;
     }
+    final image = original.clone();
     setState(() {
       if (light) {
-        _lightImage = frame.image;
+        _lightImage = image;
       } else {
-        _image = frame.image;
+        _image = image;
       }
     });
   }
@@ -234,11 +301,22 @@ class _PersonaVisualState extends State<PersonaVisual> {
   @override
   Widget build(BuildContext context) {
     if (widget.illustration != null) return widget.illustration!;
-    final image = Theme.of(context).brightness == Brightness.light ? _lightImage : _image;
+    final image = Theme.of(context).brightness == Brightness.light
+        ? _lightImage
+        : _image;
     if (image == null) return const SizedBox.expand();
-    final panel = switch (widget.name) { '니체' => 0, '부처' => 2, _ => 1 };
+    final panel = switch (widget.name) {
+      '니체' => 0,
+      '부처' => 2,
+      _ => 1,
+    };
     return CustomPaint(
-      painter: _PortraitPainter(image, panel, Theme.of(context).brightness),
+      painter: _PortraitPainter(
+        image,
+        panel,
+        Theme.of(context).brightness,
+        faceOnly: widget.faceOnly,
+      ),
       child: const SizedBox.expand(),
     );
   }
@@ -249,33 +327,72 @@ class _PortraitPainter extends CustomPainter {
   final ui.Image image;
   final int panel;
   final Brightness brightness;
-  const _PortraitPainter(this.image, this.panel, this.brightness);
+  final bool faceOnly;
+  const _PortraitPainter(
+    this.image,
+    this.panel,
+    this.brightness, {
+    this.faceOnly = false,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     final width = image.width / 3;
-    final source = brightness == Brightness.light
+    final source = faceOnly
+        ? Rect.fromLTWH(
+            width * (panel + 0.20),
+            image.height * 0.09,
+            width * 0.60,
+            image.height * 0.38,
+          )
+        : brightness == Brightness.light
         ? Rect.fromLTWH(width * panel, 0, width, image.height.toDouble())
         : Rect.fromLTWH(
-      width * (panel + 0.08), image.height * 0.13,
-      width * 0.84, image.height * 0.76,
-    );
+            width * (panel + 0.08),
+            image.height * 0.13,
+            width * 0.84,
+            image.height * 0.76,
+          );
     final bounds = Offset.zero & size;
-    final fitted = applyBoxFit(BoxFit.contain, source.size, size);
-    final destination = Alignment.bottomCenter.inscribe(fitted.destination, bounds);
+    final fitted = applyBoxFit(
+      faceOnly ? BoxFit.cover : BoxFit.contain,
+      source.size,
+      size,
+    );
+    final fittedSource = Alignment.center.inscribe(fitted.source, source);
+    final destination = Alignment.bottomCenter.inscribe(
+      fitted.destination,
+      bounds,
+    );
     canvas.saveLayer(bounds, Paint());
-    canvas.drawImageRect(image, source, destination, Paint()
-      ..filterQuality = FilterQuality.high
-      ..colorFilter = portraitInkFilter(brightness));
-    canvas.drawRect(bounds, Paint()
-      ..blendMode = BlendMode.dstIn
-      ..shader = ui.Gradient.linear(
-        Offset(0, size.height * 0.9), Offset(0, size.height),
-        [Colors.white, Colors.transparent], [0.0, 1.0],
-      ));
+    canvas.drawImageRect(
+      image,
+      fittedSource,
+      destination,
+      Paint()
+        ..filterQuality = FilterQuality.high
+        ..colorFilter = portraitInkFilter(brightness),
+    );
+    if (!faceOnly) {
+      canvas.drawRect(
+        bounds,
+        Paint()
+          ..blendMode = BlendMode.dstIn
+          ..shader = ui.Gradient.linear(
+            Offset(0, size.height * 0.9),
+            Offset(0, size.height),
+            [Colors.white, Colors.transparent],
+            [0.0, 1.0],
+          ),
+      );
+    }
     canvas.restore();
   }
 
   @override
-  bool shouldRepaint(_PortraitPainter oldDelegate) => oldDelegate.image != image || oldDelegate.panel != panel || oldDelegate.brightness != brightness;
+  bool shouldRepaint(_PortraitPainter oldDelegate) =>
+      oldDelegate.image != image ||
+      oldDelegate.panel != panel ||
+      oldDelegate.brightness != brightness ||
+      oldDelegate.faceOnly != faceOnly;
 }

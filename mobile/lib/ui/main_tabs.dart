@@ -15,7 +15,6 @@ import '../state/settings.dart';
 import 'persona_grid_screen.dart';
 import 'persona_intro_screen.dart';
 import 'settings_screen.dart';
-import 'app_theme.dart';
 
 class MainTabs extends StatefulWidget {
   final SettingsStore settings;
@@ -60,7 +59,7 @@ class _MainTabsState extends State<MainTabs> {
           ),
           const PersonaIntroScreen(),
           Theme(
-            data: AppTheme.withDefaultFont(Theme.of(context)),
+            data: Theme.of(context),
             child: SettingsScreen(
               settings: widget.settings,
               auth: widget.auth,
@@ -71,7 +70,7 @@ class _MainTabsState extends State<MainTabs> {
         ],
       ),
       bottomNavigationBar: Theme(
-        data: AppTheme.withDefaultFont(Theme.of(context)),
+        data: Theme.of(context),
         child: NavigationBar(
           selectedIndex: _index,
           onDestinationSelected: _select,

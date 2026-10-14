@@ -47,37 +47,57 @@ class _Auth implements AuthBackend {
   Future<void> sendPasswordReset(String e) async {}
 }
 
-http.Response _json(Object body) =>
-    http.Response.bytes(utf8.encode(jsonEncode(body)), 200, headers: {'content-type': 'application/json'});
+http.Response _json(Object body) => http.Response.bytes(
+  utf8.encode(jsonEncode(body)),
+  200,
+  headers: {'content-type': 'application/json'},
+);
 
 /// [admin] 이면 /me 가 개발자라고 답하고 /reports 가 신고를 돌려준다
-PhiloRagClient _server({bool admin = false}) => PhiloRagClient('http://x', httpClient: MockClient((req) async {
-      switch (req.url.path) {
-        case '/me':
-          return _json({'user_id': 'u1', 'admin': admin});
-        case '/reports':
-          return admin
-              ? _json([
-                  {
-                    'id': 3, 'created_at': '2026-10-12T15:00:00+09:00', 'user_id': 'someone',
-                    'persona': 'jesus', 'reason': '예수의 사상과 맞지 않음', 'detail': null,
-                    'question': '바람직한 삶이란?', 'answer': '보라, 먼저 하나님의 나라를 구하라.', 'extra': null,
-                  }
-                ])
-              : http.Response('{"detail":"no"}', 403);
-        case '/personas':
-          return _json([
-            {'key': 'nietzsche', 'name': '니체', 'blurb': '', 'enabled': true},
-            {'key': 'jesus', 'name': '예수', 'blurb': '', 'enabled': true},
-            {'key': 'buddha', 'name': '부처', 'blurb': '', 'enabled': true},
-          ]);
-        case '/usage':
-          return _json({'plan': 'personal', 'plan_name': 'Personal', 'used_today': 2, 'daily_limit': 5});
-      }
-      return http.Response('not found', 404);
-    }));
+PhiloRagClient _server({bool admin = false}) => PhiloRagClient(
+  'http://x',
+  httpClient: MockClient((req) async {
+    switch (req.url.path) {
+      case '/me':
+        return _json({'user_id': 'u1', 'admin': admin});
+      case '/reports':
+        return admin
+            ? _json([
+                {
+                  'id': 3,
+                  'created_at': '2026-10-12T15:00:00+09:00',
+                  'user_id': 'someone',
+                  'persona': 'jesus',
+                  'reason': '예수의 사상과 맞지 않음',
+                  'detail': null,
+                  'question': '바람직한 삶이란?',
+                  'answer': '보라, 먼저 하나님의 나라를 구하라.',
+                  'extra': null,
+                },
+              ])
+            : http.Response('{"detail":"no"}', 403);
+      case '/personas':
+        return _json([
+          {'key': 'nietzsche', 'name': '니체', 'blurb': '', 'enabled': true},
+          {'key': 'jesus', 'name': '예수', 'blurb': '', 'enabled': true},
+          {'key': 'buddha', 'name': '부처', 'blurb': '', 'enabled': true},
+        ]);
+      case '/usage':
+        return _json({
+          'plan': 'personal',
+          'plan_name': 'Personal',
+          'used_today': 2,
+          'daily_limit': 5,
+        });
+    }
+    return http.Response('not found', 404);
+  }),
+);
 
-Future<(SettingsStore, _Auth)> _pump(WidgetTester t, {bool admin = false}) async {
+Future<(SettingsStore, _Auth)> _pump(
+  WidgetTester t, {
+  bool admin = false,
+}) async {
   t.view.physicalSize = const Size(400, 860);
   t.view.devicePixelRatio = 1;
   addTearDown(t.view.resetPhysicalSize);
@@ -87,11 +107,20 @@ Future<(SettingsStore, _Auth)> _pump(WidgetTester t, {bool admin = false}) async
   await settings.load();
   final backend = _Auth();
   final auth = AuthController(backend);
-  backend.emit(const AppUser(uid: 'u1', email: 'me@example.com', provider: 'google.com'));
+  backend.emit(
+    const AppUser(uid: 'u1', email: 'me@example.com', provider: 'google.com'),
+  );
   final client = _server(admin: admin);
-  await t.pumpWidget(MaterialApp(
-    home: MainTabs(settings: settings, auth: auth, chat: ChatController(client), client: () => client),
-  ));
+  await t.pumpWidget(
+    MaterialApp(
+      home: MainTabs(
+        settings: settings,
+        auth: auth,
+        chat: ChatController(client),
+        client: () => client,
+      ),
+    ),
+  );
   await t.pumpAndSettle();
   return (settings, backend);
 }
@@ -138,9 +167,16 @@ void main() {
     expect(findTextContaining('유대 베들레헴'), findsOneWidget);
     expect(findTextContaining('나사렛 예수'), findsNothing);
 
-    final visual = find.descendant(of: find.byType(PersonaDetailScreen), matching: find.byType(PersonaVisual));
+    final visual = find.descendant(
+      of: find.byType(PersonaDetailScreen),
+      matching: find.byType(PersonaVisual),
+    );
     final top = t.getTopLeft(visual).dy;
-    await t.scrollUntilVisible(findText('요한복음'), 300, scrollable: find.byType(Scrollable).last);
+    await t.scrollUntilVisible(
+      findText('요한복음'),
+      300,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(findText('마태복음'), findsOneWidget);
     expect(findText('요한복음'), findsOneWidget);
     expect(t.getTopLeft(visual).dy, top); // 글을 넘겨도 일러스트는 제자리
@@ -168,10 +204,21 @@ void main() {
     expect(findText('Personal 요금제'), findsOneWidget);
     expect(findTextContaining('오늘 2 / 5건 사용 · 3건 남음'), findsOneWidget);
 
-    await t.scrollUntilVisible(find.byKey(const Key('pay')), 200, scrollable: find.byType(Scrollable).last);
-    expect(t.widget<FilledButton>(find.byKey(const Key('pay'))).onPressed, isNull); // 비활성
+    await t.scrollUntilVisible(
+      find.byKey(const Key('pay')),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(
+      t.widget<FilledButton>(find.byKey(const Key('pay'))).onPressed,
+      isNull,
+    ); // 비활성
 
-    await t.scrollUntilVisible(find.byKey(const Key('signout')), -200, scrollable: find.byType(Scrollable).last);
+    await t.scrollUntilVisible(
+      find.byKey(const Key('signout')),
+      -200,
+      scrollable: find.byType(Scrollable).last,
+    );
     await t.tap(find.byKey(const Key('signout')));
     await t.pumpAndSettle();
     await t.tap(find.widgetWithText(FilledButton, '로그아웃'));
@@ -180,7 +227,10 @@ void main() {
   });
 
   testWidgets('설정 값은 다시 켜도 남는다', (t) async {
-    SharedPreferences.setMockInitialValues({'theme_mode': 'light', 'text_size': 'xlarge'});
+    SharedPreferences.setMockInitialValues({
+      'theme_mode': 'light',
+      'text_size': 'xlarge',
+    });
     final s = SettingsStore();
     await s.load();
     expect(s.themeMode, ThemeMode.light);
@@ -199,7 +249,12 @@ void main() {
     await _pump(t, admin: true);
     await t.tap(findText('설정'));
     await t.pumpAndSettle();
-    await t.scrollUntilVisible(find.byKey(const Key('reports')), 200, scrollable: find.byType(Scrollable).last);
+    await t.scrollUntilVisible(
+      find.byKey(const Key('reports')),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await t.pumpAndSettle(); // 카드 안의 항목으로 스크롤한 위치를 화면에 반영한다
     await t.tap(find.byKey(const Key('reports')));
     await t.pumpAndSettle();
     expect(findText('예수 · 예수의 사상과 맞지 않음'), findsOneWidget);

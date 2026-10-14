@@ -1,4 +1,4 @@
-// SourcesSection — "근거 구절 N개" 는 접혀 있고, 펼치면 한글 작품명 목록만 보인다. 줄은 누를 수 없다.
+// SourcesSection — 한글 작품명과 위치가 처음부터 보이며, 탭해도 본문을 열지 않는다.
 // 실행: mobile 폴더에서  flutter test
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -26,36 +26,30 @@ const _sources = [
   ),
 ];
 
-Widget _app(Widget child) =>
-    MaterialApp(home: Scaffold(body: ListView(children: [child])));
+Widget _app(Widget child) => MaterialApp(
+  home: Scaffold(body: ListView(children: [child])),
+);
 
 void main() {
-  testWidgets('헤더만 보이고, 누르면 한글 작품명 목록이 펼쳐진다', (tester) async {
+  testWidgets('한글 출처가 처음부터 보이고 본문을 여는 동작은 없다', (tester) async {
     await tester.pumpWidget(_app(const SourcesSection(sources: _sources)));
 
-    expect(findText('근거 구절 2개'), findsOneWidget);
-    expect(findText('1. 마태복음 3:1~3:15'), findsNothing);
+    expect(findText('원전 출처 · 2개'), findsOneWidget);
+    expect(findText('마태복음 3:1~3:15'), findsOneWidget);
 
-    await tester.tap(findText('근거 구절 2개'));
+    await tester.tap(findText('마태복음 3:1~3:15'));
     await tester.pumpAndSettle();
 
-    expect(findText('1. 마태복음 3:1~3:15'), findsOneWidget);
-    expect(findText('2. 누가복음 4:34~4:44'), findsOneWidget);
+    expect(findText('마태복음 3:1~3:15'), findsOneWidget);
+    expect(findText('누가복음 4:34~4:44'), findsOneWidget);
     // 영어 제목은 화면에 안 나온다
     expect(findTextContaining('GOSPEL ACCORDING'), findsNothing);
-    // 줄은 펼쳐지는 타일이 아니다 (헤더 하나만 ExpansionTile)
-    expect(find.byType(ExpansionTile), findsOneWidget);
-  });
-
-  testWidgets('다시 누르면 접힌다', (tester) async {
-    await tester.pumpWidget(
-        _app(const SourcesSection(sources: _sources, initiallyExpanded: true)));
-    await tester.pumpAndSettle();
-    expect(findText('1. 마태복음 3:1~3:15'), findsOneWidget);
-
-    await tester.tap(findText('근거 구절 2개'));
-    await tester.pumpAndSettle();
-    expect(findText('1. 마태복음 3:1~3:15'), findsNothing);
+    expect(find.byType(ExpansionTile), findsNothing);
+    expect(find.byType(InkWell), findsNothing);
+    expect(
+      find.byKey(const ValueKey('sources-jesus#3,jesus#40')),
+      findsOneWidget,
+    );
   });
 
   test('Source.fromJson — work_ko 가 없으면 영어 제목으로 대신한다', () {

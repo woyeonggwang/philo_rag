@@ -26,55 +26,85 @@ const _personas = [
   {'key': 'hidden', 'name': '숨김', 'blurb': '', 'enabled': false},
 ];
 
-http.Response _json(Object body) => http.Response.bytes(utf8.encode(jsonEncode(body)), 200,
-    headers: {'content-type': 'application/json'});
+http.Response _json(Object body) => http.Response.bytes(
+  utf8.encode(jsonEncode(body)),
+  200,
+  headers: {'content-type': 'application/json'},
+);
 
 PhiloRagClient _server({int failFirst = 0}) {
   var calls = 0;
-  return PhiloRagClient('http://x', httpClient: MockClient((req) async {
-    if (req.url.path == '/personas') {
-      calls++;
-      if (calls <= failFirst) throw const SocketException('서버 켜지는 중');
-      return _json(_personas);
-    }
-    final q = (jsonDecode(req.body) as Map)['question'];
-    return _json({
-      'persona': 'jesus', 'persona_name': '예수', 'question': q, 'answer': '보라, 염려하지 말라.',
-      'grounded': true, 'safety': false, 'retries': 0, 'glossary': [], 'sources': [],
-    });
-  }));
+  return PhiloRagClient(
+    'http://x',
+    httpClient: MockClient((req) async {
+      if (req.url.path == '/personas') {
+        calls++;
+        if (calls <= failFirst) throw const SocketException('서버 켜지는 중');
+        return _json(_personas);
+      }
+      final q = (jsonDecode(req.body) as Map)['question'];
+      return _json({
+        'persona': 'jesus',
+        'persona_name': '예수',
+        'question': q,
+        'answer': '보라, 염려하지 말라.',
+        'grounded': true,
+        'safety': false,
+        'retries': 0,
+        'glossary': [],
+        'sources': [],
+      });
+    }),
+  );
 }
 
 Future<void> _pump(WidgetTester t, PhiloRagClient client) async {
   SharedPreferences.setMockInitialValues({});
   final settings = SettingsStore();
   await settings.load();
-  await t.pumpWidget(RepaintBoundary(key: const Key('grid-preview'), child: MaterialApp(
-    theme: AppTheme.dark,
-    home: PersonaGridScreen(
-      settings: settings,
-      chat: ChatController(client), // 저장 없음
-      client: () => client,
-      retryDelay: const Duration(milliseconds: 10),
+  await t.pumpWidget(
+    RepaintBoundary(
+      key: const Key('grid-preview'),
+      child: MaterialApp(
+        theme: AppTheme.dark,
+        home: PersonaGridScreen(
+          settings: settings,
+          chat: ChatController(client), // 저장 없음
+          client: () => client,
+          retryDelay: const Duration(milliseconds: 10),
+        ),
+      ),
     ),
-  )));
+  );
 }
 
 void main() {
   testWidgets('테마를 바꾸면 기존 인물 위젯이 전용 이미지로 전환된다', (t) async {
     Future<void> showTheme(ThemeData theme) async {
-      await t.pumpWidget(MaterialApp(
-        theme: theme,
-        home: const SizedBox(width: 200, height: 300, child: PersonaVisual(name: '니체')),
-      ));
+      await t.pumpWidget(
+        MaterialApp(
+          theme: theme,
+          home: const SizedBox(
+            width: 200,
+            height: 300,
+            child: PersonaVisual(name: '니체'),
+          ),
+        ),
+      );
       await t.runAsync(() async {
         await Future<void>.delayed(const Duration(milliseconds: 400));
       });
       await t.pumpAndSettle();
     }
-    dynamic painter() => t.widget<CustomPaint>(find.descendant(
-      of: find.byType(PersonaVisual), matching: find.byType(CustomPaint),
-    )).painter;
+
+    dynamic painter() => t
+        .widget<CustomPaint>(
+          find.descendant(
+            of: find.byType(PersonaVisual),
+            matching: find.byType(CustomPaint),
+          ),
+        )
+        .painter;
     await showTheme(AppTheme.dark);
     final ui.Image darkImage = painter().image;
     await showTheme(AppTheme.light);
@@ -93,15 +123,25 @@ void main() {
     addTearDown(t.view.resetDevicePixelRatio);
     await _pump(t, _server());
     await t.pumpAndSettle();
-    final grid = t.widget<GridView>(find.byType(GridView));
-    expect((grid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount).crossAxisCount, 2);
+    final nietzsche = t.getRect(
+      find.byKey(const ValueKey('persona-nietzsche')),
+    );
+    final jesus = t.getRect(find.byKey(const ValueKey('persona-jesus')));
+    final buddha = t.getRect(find.byKey(const ValueKey('persona-buddha')));
+    expect(nietzsche.top, jesus.top); // 첫 줄은 두 칸
+    expect(nietzsche.width, jesus.width);
+    expect(jesus.left, greaterThan(nietzsche.right));
+    expect(buddha.left, nietzsche.left); // 마지막 홀수 카드는 두 칸 너비
+    expect(buddha.right, jesus.right);
+    expect(buddha.top, greaterThan(nietzsche.bottom));
     expect(find.byKey(const ValueKey('persona-nietzsche')), findsOneWidget);
     expect(find.byKey(const ValueKey('persona-jesus')), findsOneWidget);
     expect(find.byKey(const ValueKey('persona-buddha')), findsOneWidget);
     expect(find.byType(PersonaVisual), findsNWidgets(3));
-    expect(findText('니체'), findsNothing);
-    expect(findText('예수'), findsNothing);
-    expect(findText('부처'), findsNothing);
+    expect(findText('니체'), findsOneWidget);
+    expect(findText('예수'), findsOneWidget);
+    expect(findText('부처'), findsOneWidget);
+    expect(findText('망치를 든 철학자.'), findsOneWidget);
     expect(findText('쉼표,'), findsNothing);
     expect(findText('숨김'), findsNothing);
     expect(findText('연결'), findsNothing);
@@ -110,11 +150,15 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 400));
     });
     await t.pumpAndSettle();
-    final boundary = t.renderObject<RenderRepaintBoundary>(find.byKey(const Key('grid-preview')));
+    final boundary = t.renderObject<RenderRepaintBoundary>(
+      find.byKey(const Key('grid-preview')),
+    );
     await t.runAsync(() async {
       final image = await boundary.toImage(pixelRatio: 2);
       final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-      await File('../output/illustration-samples/persona-grid-v2-preview.png').writeAsBytes(bytes!.buffer.asUint8List());
+      final file = File('../output/design-2026-10-14/persona-grid-dark.png');
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(bytes!.buffer.asUint8List());
       image.dispose();
     });
   });
@@ -135,7 +179,7 @@ void main() {
 
     await t.pageBack(); // 뒤로 가면 바둑판
     await t.pumpAndSettle();
-    expect(find.byType(GridView), findsOneWidget);
+    expect(find.byKey(const Key('persona-grid')), findsOneWidget);
   });
 
   testWidgets('서버가 켜지는 중이면 기다렸다 다시 묻는다 (연결 버튼 대신)', (t) async {

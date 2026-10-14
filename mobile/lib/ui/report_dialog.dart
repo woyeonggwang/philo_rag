@@ -9,19 +9,21 @@ import 'keep_words.dart';
 
 /// 신고 사유. 첫 줄은 대화 상대의 이름이 들어간다.
 List<String> reportReasons(String personaName) => [
-      '$personaName의 사상과 맞지 않음',
-      '폭력적인 발화',
-      '혐오·차별 표현',
-      '선정적인 내용',
-      '사실과 다른 내용 (없는 인용·잘못된 출처)',
-      '위험하거나 부적절한 조언',
-    ];
+  '$personaName의 사상과 맞지 않음',
+  '폭력적인 발화',
+  '혐오·차별 표현',
+  '선정적인 내용',
+  '사실과 다른 내용 (없는 인용·잘못된 출처)',
+  '위험하거나 부적절한 조언',
+];
 
 const reportOther = '기타';
 
 /// 고른 사유와 직접 입력한 내용. 취소하면 null.
-Future<({String reason, String? detail})?> showReportDialog(BuildContext context,
-    {required String personaName}) {
+Future<({String reason, String? detail})?> showReportDialog(
+  BuildContext context, {
+  required String personaName,
+}) {
   return showDialog<({String reason, String? detail})>(
     context: context,
     builder: (_) => _ReportDialog(personaName: personaName),
@@ -48,14 +50,16 @@ class _ReportDialogState extends State<_ReportDialog> {
   }
 
   bool get _ready =>
-      _agreed && _reason != null && (_reason != reportOther || _detail.text.trim().isNotEmpty);
+      _agreed &&
+      _reason != null &&
+      (_reason != reportOther || _detail.text.trim().isNotEmpty);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return AlertDialog(
       title: const Text('대화내용 신고'),
-      contentPadding: const EdgeInsets.fromLTRB(8, 16, 8, 0),
+      contentPadding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       content: SingleChildScrollView(
         child: RadioGroup<String>(
           groupValue: _reason,
@@ -64,11 +68,21 @@ class _ReportDialogState extends State<_ReportDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              for (final r in [...reportReasons(widget.personaName), reportOther])
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+                child: Text(
+                  '${widget.personaName}의 답변을 검토할 수 있도록 사유를 골라 주세요.',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+              for (final r in [
+                ...reportReasons(widget.personaName),
+                reportOther,
+              ])
                 RadioListTile<String>(
                   key: ValueKey('reason-$r'),
                   value: r,
-                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
                   title: Text(r == reportOther ? '기타 (직접 입력)' : r),
                 ),
               if (_reason == reportOther)
@@ -82,32 +96,42 @@ class _ReportDialogState extends State<_ReportDialog> {
                     maxLines: 3,
                     minLines: 1,
                     onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(hintText: '신고 사유를 적어 주세요'),
+                    decoration: const InputDecoration(
+                      hintText: '신고 사유를 적어 주세요',
+                    ),
                   ),
                 ),
-              const Divider(),
+              const Divider(height: 24),
               CheckboxListTile(
                 key: const Key('report-agree'),
                 value: _agreed,
                 onChanged: (v) => setState(() => _agreed = v ?? false),
                 controlAffinity: ListTileControlAffinity.leading,
-                dense: true,
-                title: const Text('신고한 질문과 답(대화 내용)이 확인을 위해 개발자에게 제공되는 것에 동의합니다.'),
-                subtitle: Text('동의해야 신고할 수 있습니다.', style: theme.textTheme.bodySmall),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                title: const Text(
+                  '신고한 질문과 답(대화 내용)이 확인을 위해 개발자에게 제공되는 것에 동의합니다.',
+                ),
+                subtitle: Text(
+                  '동의해야 신고할 수 있습니다.',
+                  style: theme.textTheme.bodySmall,
+                ),
               ),
             ],
           ),
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('취소'),
+        ),
         FilledButton(
           key: const Key('report-send'),
           onPressed: _ready
               ? () => Navigator.pop(context, (
-                    reason: _reason!,
-                    detail: _reason == reportOther ? _detail.text.trim() : null,
-                  ))
+                  reason: _reason!,
+                  detail: _reason == reportOther ? _detail.text.trim() : null,
+                ))
               : null,
           child: const Text('신고'),
         ),

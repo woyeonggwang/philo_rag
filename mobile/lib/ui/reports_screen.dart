@@ -43,7 +43,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   @override
   Widget build(BuildContext context) {
     return Theme(
-      data: AppTheme.withDefaultFont(Theme.of(context)),
+      data: Theme.of(context),
       child: Builder(builder: _buildContent),
     );
   }
@@ -62,7 +62,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text('불러오지 못했습니다: ${snap.error}', textAlign: TextAlign.center),
+                child: Text(
+                  '불러오지 못했습니다: ${snap.error}',
+                  textAlign: TextAlign.center,
+                ),
               ),
             );
           }
@@ -70,35 +73,55 @@ class _ReportsScreenState extends State<ReportsScreen> {
           return RefreshIndicator(
             onRefresh: _refresh,
             child: items.isEmpty
-                ? ListView(children: const [
-                    SizedBox(height: 120),
-                    Center(child: Text('신고가 없습니다')),
-                  ])
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: const [
+                      SizedBox(height: 120),
+                      Center(child: Icon(Icons.flag_outlined, size: 36)),
+                      SizedBox(height: 16),
+                      Center(child: Text('신고가 없습니다')),
+                    ],
+                  )
                 : ListView.separated(
+                    padding: const EdgeInsets.all(AppTheme.pageInset),
+                    physics: const AlwaysScrollableScrollPhysics(),
                     itemCount: items.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    separatorBuilder: (_, _) => const SizedBox(height: 12),
                     itemBuilder: (context, i) {
                       final r = items[i];
                       final name = profileFor(r.persona)?.name ?? r.persona;
-                      return ExpansionTile(
-                        key: ValueKey('report-${r.id}'),
-                        title: Text('$name · ${r.reason}'),
-                        subtitle: Text('#${r.id} · ${_when(r.createdAt)} · ${r.userId}',
-                            style: theme.textTheme.bodySmall),
-                        expandedCrossAxisAlignment: CrossAxisAlignment.start,
-                        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                        children: [
-                          if (r.detail != null) ...[
-                            Text('직접 입력', style: theme.textTheme.labelMedium),
-                            SelectableText(keepWords(r.detail!)),
+                      return Card(
+                        child: ExpansionTile(
+                          key: ValueKey('report-${r.id}'),
+                          title: Text('$name · ${r.reason}'),
+                          subtitle: Text(
+                            '#${r.id} · ${_when(r.createdAt)} · ${r.userId}',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                          expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                          childrenPadding: const EdgeInsets.fromLTRB(
+                            16,
+                            0,
+                            16,
+                            16,
+                          ),
+                          children: [
+                            if (r.detail != null) ...[
+                              Text('직접 입력', style: theme.textTheme.labelMedium),
+                              SelectableText(keepWords(r.detail!)),
+                              const SizedBox(height: 12),
+                            ],
+                            Text('질문', style: theme.textTheme.labelMedium),
+                            SelectableText(
+                              keepWords(
+                                r.question.isEmpty ? '(질문 없음)' : r.question,
+                              ),
+                            ),
                             const SizedBox(height: 12),
+                            Text('답', style: theme.textTheme.labelMedium),
+                            SelectableText(keepWords(r.answer)),
                           ],
-                          Text('질문', style: theme.textTheme.labelMedium),
-                          SelectableText(keepWords(r.question.isEmpty ? '(질문 없음)' : r.question)),
-                          const SizedBox(height: 12),
-                          Text('답', style: theme.textTheme.labelMedium),
-                          SelectableText(keepWords(r.answer)),
-                        ],
+                        ),
                       );
                     },
                   ),
