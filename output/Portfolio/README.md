@@ -25,3 +25,7 @@
 ## 답변 평가
 
 [eval/report-2026-10-14.md](eval/report-2026-10-14.md) — 31문항을 사람이 원전과 대조해 판정. 첫 측정 통과 23 · 주의 4 · 실패 3 → 네 가지를 고친 뒤 **통과 29 · 주의 2 · 실패 0**.
+
+## PPT 재료
+
+[useimage/](useimage/slides.md) — 슬라이드 10장 분량의 내용([slides.md](useimage/slides.md))과 쓸 이미지 9장 (화면 캡처 5 + 흐름도·그래프 4). 흐름도·그래프는 `scripts/make_portfolio_charts.py` 로 다시 그릴 수 있다.
