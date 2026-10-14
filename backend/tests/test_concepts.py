@@ -46,7 +46,7 @@ class _Fake:
         self.answers, self.prompts = list(answers), []
 
     def invoke(self, messages):
-        if messages[-1].content.startswith("다음 메시지를 아래 셋 중"):
+        if messages[-1].content.startswith("다음은 ") and "여섯 가지" in messages[-1].content:
             return _Resp("일반")
         self.prompts.append(messages[1].content)
         return _Resp(self.answers.pop(0))
@@ -87,6 +87,13 @@ def test_word_gubeol_in_answer_is_rewritten(client, monkeypatch):
     monkeypatch.setattr(llm, "get_llm", lambda *a, **k: fake)
     body = client.post("/ask", json={"persona": "nietzsche", "question": "아모르파티란 무엇인가요"}).json()
     assert body["retries"] == 1 and body["answer"] == NIETZSCHE_OK
+
+
+def test_guard_allows_biblical_riyo():
+    """「무슨 상이 있으리요」는 성경체다 — ~요체로 잡아 세 번 재생성했었다 (30문항 평가 J01, 2026-10-14)."""
+    ok = "너희를 사랑하는 자만 사랑한다면 무슨 상이 있으리요. 너희도 긍휼히 여기라."
+    assert not any("~요체" in v for v in guard.check("jesus", ok, safety=False))
+    assert any("~요체" in v for v in guard.check("jesus", "원수를 사랑하세요. 그게 좋아요.", safety=False))
 
 
 def test_guard_flags_gubeol():

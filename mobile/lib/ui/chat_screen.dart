@@ -58,10 +58,20 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  /// 새 메시지가 붙으면 맨 아래로
+  /// 새 메시지가 붙거나 대화창을 열면 맨 아래로.
+  /// 목록은 화면에 그린 말풍선만 길이를 재므로, 처음 잡은 "맨 아래"는 실제보다 짧다 — 긴 답이 많으면 대화창이 중간에서 열렸다
+  /// (2026-10-14). 끝으로 간 뒤 끝이 더 늘어났으면 다시 가기를 끝이 멈출 때까지 되풀이한다.
   void _scrollToEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToEnd(10));
+  }
+
+  void _jumpToEnd(int triesLeft) {
+    if (!mounted || !_scroll.hasClients) return;
+    final end = _scroll.position.maxScrollExtent;
+    _scroll.jumpTo(end);
+    if (triesLeft == 0) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      if (mounted && _scroll.hasClients && _scroll.position.maxScrollExtent > end) _jumpToEnd(triesLeft - 1);
     });
   }
 

@@ -32,7 +32,7 @@ class _Resp:
 class FakeLLM:
     """답변을 차례로 돌려준다. 답변 호출마다 온도와 마지막 사용자 메시지를 기록한다."""
 
-    def __init__(self, answers, label="일반"):
+    def __init__(self, answers, label="가르침"):
         self.answers = list(answers)
         self.label = label          # 분류 호출(위기/미혹/일반)에 돌려줄 답
         self.classified = 0
@@ -45,7 +45,7 @@ class FakeLLM:
 
     def invoke(self, messages):
         content = messages[-1].content
-        if content.startswith("다음 메시지를 아래 셋 중"):    # 위기·미혹 분류
+        if content.startswith("다음은 ") and "여섯 가지" in content:    # 질문 분류 (위기·미혹·행적·가르침·토론·잡담)
             self.classified += 1
             return _Resp(self.label)
         self.temps.append(self._temp)
@@ -55,7 +55,7 @@ class FakeLLM:
 
 @pytest.fixture
 def fake(monkeypatch):
-    def make(*answers, label="일반"):
+    def make(*answers, label="가르침"):
         f = FakeLLM(answers, label)
         monkeypatch.setattr(llm, "get_llm", f.at)
         return f
@@ -82,12 +82,14 @@ def test_every_persona_has_open_line_in_its_prompt():
         assert "찬반" not in p.open_line
         # 자기 삶·행적을 묻는 질문에는 "가르친 바가 아니니라"를 쓰지 않는다 (십자가의 무게, 2026-10-12)
         assert "네 삶과 행적을 물으면 네가 겪은 일로 답한다" in p.system
-        assert "취향·잡담이면 한두 문장으로" in p.system
+        # 첫 문장을 붙일지는 코드가 정한다 — 모델은 먼저 쓰지 않는다 (B안, 2026-10-14)
+        assert "네가 먼저 하지 않는다" in p.system
 
 
-def test_no_context_opens_with_fixed_line_then_pro_and_con(client, fake, monkeypatch):
+def test_debate_opens_with_fixed_line_then_world_vs_me(client, fake, monkeypatch):
+    """분류가 "토론"이면 코드가 첫 문장을 붙이고 "세상은 … 그러나 나는" 으로 (B안)."""
     monkeypatch.setattr(retriever, "search", lambda *a, **k: [])      # 맞는 구절 없음
-    f = fake(PRO_CON)
+    f = fake(PRO_CON, label="토론")
     body = _ask(client, "jesus", "진화론에 대해서 어떻게 생각하세요")
     opener = personas.get("jesus").open_line
     assert body["answer"] == opener + " " + PRO_CON                   # 첫 문장은 코드가 붙인다
@@ -95,13 +97,12 @@ def test_no_context_opens_with_fixed_line_then_pro_and_con(client, fake, monkeyp
     assert body["grounded"] is False and body["sources"] == []
     assert f.temps == [get_settings().llm_temperature_open]           # 온도를 올려 부른다
     assert "그러나 나는" in f.prompts[0] and "가까운 구절" not in f.prompts[0]   # 세상의 생각 → 나의 가르침
-    assert "찬반 없이 한두 문장으로" in f.prompts[0]                              # 잡담에는 찬반 없이
 
 
-def test_no_context_retries_when_model_repeats_the_opener(client, fake, monkeypatch):
+def test_debate_retries_when_model_repeats_the_opener(client, fake, monkeypatch):
     monkeypatch.setattr(retriever, "search", lambda *a, **k: [])
     opener = personas.get("jesus").open_line
-    fake(opener + " " + PRO_CON, PRO_CON)
+    fake(opener + " " + PRO_CON, PRO_CON, label="토론")
     body = _ask(client, "jesus", "진화론에 대해서 어떻게 생각하세요")
     assert body["retries"] == 1
     assert body["answer"].count(opener) == 1
@@ -165,7 +166,7 @@ def test_crisis_wins_over_cult(client, fake):
 
 
 def test_ordinary_prophet_question_stays_normal(client, fake, monkeypatch):
-    """분류가 "일반"이면(세례 요한 같은 성경 속 인물) 보통 검색 경로다."""
+    """분류가 미혹이 아니면(세례 요한 같은 성경 속 인물) 보통 검색 경로다."""
     called = {}
     def search(*a, **k):
         called["search"] = True
@@ -198,11 +199,94 @@ def test_low_but_relevant_passages_go_to_the_normal_path(client, fake, monkeypat
     assert f.temps == [None]                             # 보통 경로의 온도
 
 
-def test_model_declines_when_passages_do_not_answer(client, fake, monkeypatch):
-    """구절이 있어도 답이 안 되면 모델이 첫 문장으로 밝히고, 앱에는 근거 구절 없음으로 보인다."""
+def test_chat_question_gets_opener_and_short_answer(client, fake, monkeypatch):
+    """분류가 "잡담"이면 구절 없이, 코드가 첫 문장을 붙이고 찬반 없이 짧게 (B안)."""
     monkeypatch.setattr(retriever, "search", lambda *a, **k: [_hit("22:1~22:14", 0.442, "a marriage for his son")])
     opener = personas.get("jesus").open_line
-    fake(opener + " " + PRO_CON)
-    body = _ask(client, "jesus", "오늘 점심 메뉴 추천해 주세요")
+    f = fake("나는 사람이 만든 것보다 하늘의 뜻을 귀히 여기라 하리라.", label="잡담")
+    body = _ask(client, "jesus", "좋아하는 포켓몬이 뭔가요")
     assert body["answer"].startswith(opener)
     assert body["grounded"] is False and body["sources"] == []
+    assert "찬반 없이 한두 문장으로" in f.prompts[0] and "marriage" not in f.prompts[0]
+    assert f.temps == [get_settings().llm_temperature_open]
+
+
+def test_teaching_question_never_opens_with_not_taught(client, fake, monkeypatch):
+    """분류가 "가르침"인데 모델이 "가르친 바가 아니니라"로 시작하면 다시 쓰게 한다 — 「바람직한 삶」 (30문항 평가 J04)."""
+    monkeypatch.setattr(retriever, "search", lambda *a, **k: [_hit("6:17~6:31", 0.448, "treasures in heaven")])
+    opener = personas.get("jesus").open_line
+    good = "먼저 하나님의 나라와 그의 의를 구하라. 하늘에 보물을 쌓으라."
+    fake(opener + " " + good, good, label="가르침")
+    body = _ask(client, "jesus", "바람직한 삶이란 무엇이라고 생각하십니까?")
+    assert body["answer"] == good and body["retries"] == 1
+    assert body["grounded"] is True and body["sources"]
+
+
+def test_teaching_question_uses_nearest_passages_even_below_threshold(client, fake, monkeypatch):
+    """그 사람의 주제라고 분류됐으면 0.40 미만이라도 가장 가까운 구절 3개로 답한다."""
+    hits = [_hit(f"{i}:1~{i}:9", 0.39 - i / 100, f"passage {i}") for i in range(1, 6)]
+    monkeypatch.setattr(retriever, "search", lambda *a, **k: hits)
+    f = fake(PRO_CON, label="가르침")
+    body = _ask(client, "jesus", "인생의 의미는 무엇입니까?")
+    p = f.prompts[0]
+    assert p.startswith("구절:") and "passage 1" in p and "passage 3" in p and "passage 4" not in p
+    assert body["grounded"] is True and len(body["sources"]) == 3
+    assert f.temps == [None]
+
+
+def test_history_question_answers_as_lived_experience(client, fake, monkeypatch):
+    """분류가 "행적"이면 겪은 일로 답하라는 말을 붙인다 — 「십자가를 지고 가실 때」 (30문항 평가 J06)."""
+    monkeypatch.setattr(retriever, "search", lambda *a, **k: [_hit("27:27~27:44", 0.52, "Simon by name: him they compelled to bear his cross")])
+    f = fake("구레네 사람 시몬이 내 십자가를 지고 따랐느니라.", label="행적")
+    body = _ask(client, "jesus", "십자가를 지고 가실 때 어떠셨습니까?")
+    assert "네가 겪은 일로 1인칭으로 답하라" in f.prompts[0]
+    assert "기록·책·성경에 무엇이 적혔는지를 말하지 마라" in f.prompts[0]
+    assert body["grounded"] is True and not body["answer"].startswith(personas.get("jesus").open_line)
+
+
+def test_debate_gets_near_passages_hidden_from_sources(client, fake, monkeypatch):
+    """토론에는 0.40 이상 구절을 "가까운 구절"로 주되 근거로 보이지 않는다 — 피터 틸 질문 (6.21)."""
+    monkeypatch.setattr(retriever, "search", lambda *a, **k: [_hit("8:35~8:38", 0.45, "whosoever will save his life shall lose it")])
+    f = fake(PRO_CON, label="토론")
+    body = _ask(client, "jesus", "피터 틸이 이 세상에서의 영생을 이루려고 한다는데 어떻게 보십니까?")
+    assert "가까운 구절:" in f.prompts[0] and "save his life" in f.prompts[0]
+    assert body["grounded"] is False and body["sources"] == []
+
+
+@pytest.mark.parametrize("verdict, want", [
+    ("행적", "행적"), ("가르침입니다", "가르침"), ("토론", "토론"), ("잡담", "잡담"), ("위기", "위기"), ("미혹", "미혹"),
+    ("일반", "가르침"), ("모르겠다", "가르침"),     # 모르는 답은 가르침 — 답할 수 있는 질문을 놓치지 않게
+])
+def test_classify_labels(monkeypatch, verdict, want):
+    seen = {}
+
+    class _One:
+        def invoke(self, messages):
+            seen["prompt"] = messages[-1].content
+            return _Resp(verdict)
+    monkeypatch.setattr(llm, "get_llm", lambda *a, **k: _One())
+    assert rag._classify("요즘 마음이 무겁습니다", "예수")[0] == want
+    assert "예수에게 한 질문" in seen["prompt"]
+
+
+def test_classify_cult_name_and_crisis_priority(monkeypatch):
+    class _One:
+        def __init__(self, v):
+            self.v = v
+
+        def invoke(self, messages):
+            return _Resp(self.v)
+    monkeypatch.setattr(llm, "get_llm", lambda *a, **k: _One("가르침"))
+    assert rag._classify("신천지에 대해 어떻게 생각하세요", "니체") == ("미혹", "regex")
+    monkeypatch.setattr(llm, "get_llm", lambda *a, **k: _One("위기"))
+    assert rag._classify("신천지에서 나왔는데 이제 아무것도 남지 않았습니다", "예수")[0] == "위기"
+
+
+def test_crisis_is_only_about_ones_own_life():
+    """위기는 본인 생명에 관한 말일 때만 — 「돈 걱정으로 잠이 안 옵니다」에 109 안내가 나갔다 (사용자 결정 2026-10-14)."""
+    assert "걱정·불면·스트레스·슬픔만으로는 위기가 아니다" in rag.CLASSIFY_PROMPT
+    assert "자기 생명에 관한 말" in rag.CLASSIFY_PROMPT
+    # 명백한 표현은 여전히 정규식이 호출 없이 잡는다
+    for q in ["죽고 싶어요", "살기 싫습니다", "더 이상 살아갈 자신이 없습니다", "사라지고 싶어요"]:
+        assert rag.SAFETY_PATTERNS.search(q)
+    assert not rag.SAFETY_PATTERNS.search("돈 걱정으로 잠이 안 옵니다")

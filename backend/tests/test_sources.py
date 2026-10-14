@@ -32,7 +32,7 @@ class FakeLLM:
     def invoke(self, messages):
         self.calls += 1
         content = messages[-1].content
-        if content.startswith("다음 메시지를 아래 셋 중"):
+        if content.startswith("다음은 ") and "여섯 가지" in content:
             return _Resp("일반")
         return _Resp(ANSWER)
 

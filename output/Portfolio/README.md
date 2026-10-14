@@ -9,7 +9,7 @@
 
 | | 화면 | 파일 |
 |---|---|---|
-| 1 | 첫 화면 — 화면을 누르면 시작 (철학자 초상이 먹처럼 번지며 바뀐다) | [01-title.png](screenshots/01-title.png) |
+| 1 | 첫 화면 — 화면을 누르면 시작. 철학자 초상이 먹처럼 번지며 니체 → 예수 → 부처로 바뀐다 | [니체](screenshots/01-title-nietzsche.png) · [예수](screenshots/01-title-jesus.png) · [부처](screenshots/01-title-buddha.png) |
 | 2 | 대화 탭 — 철학자 고르기 | [02-philosophers.png](screenshots/02-philosophers.png) |
 | 3 | 니체와의 대화 — 「아모르파티란 무엇인가요」, 원전 출처 칩 | [03-chat-nietzsche.png](screenshots/03-chat-nietzsche.png) |
 | 4 | 예수와의 대화 — 「원수를 어떻게 대해야 합니까?」 | [04-chat-jesus.png](screenshots/04-chat-jesus.png) |

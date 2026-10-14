@@ -1,4 +1,4 @@
-"""안전 판단 -> 검색 -> 프롬프트 조립 -> LLM 호출 -> 규칙 검사."""
+"""질문 분류(위기·미혹·행적·가르침·토론·잡담) -> 검색 -> 프롬프트 조립 -> LLM 호출 -> 규칙 검사."""
 import logging
 import re
 
@@ -26,17 +26,33 @@ USER_TEMPLATE = """구절:
 # 그래서 (사용자 결정 2026-10-12)
 #  ① 반대편은 "세상 사람들의 생각"으로 소개하고 "그러나 나는"으로 자기 가르침을 말하게 한다
 #    (마 5:21 "너희가 들었으나 나는 너희에게 이르노니" 꼴. 니까야의 "어떤 사문·바라문들은 … 그러나 나는" 도 같은 꼴)
-#  ② 기준선(MIN_SCORE)을 0.45 → 0.40 으로 내리고, 구절이 질문에 답하는지는 모델이 판단한다 (personas._COMMON).
-#    답이 안 되면 모델이 open_line 으로 시작하고, 코드가 그것을 보고 근거 없음으로 표시한다 (_declined).
-#    점수만으로는 못 가른다 — 예수 「바람직한 삶」 0.448 이 「점심 메뉴」 0.442 와 붙어 있다.
-#    이 템플릿은 0.40 이상인 구절이 하나도 없을 때만 쓴다.
-NO_CONTEXT = """질문: {question}
+#  ② 첫 문장을 붙일지는 처음엔 모델이 판단했다(A안) — 30문항 평가에서 예수가 「바람직한 삶」「십자가를 지고 가실 때」에도
+#    "가르친 바가 아니니라"로 시작했다. 그래서 **분류 호출이 질문 종류를 정하고 코드가 결정한다** (B안, 사용자 결정 2026-10-14, CLAUDE.md 6.23).
+#    토론·잡담에만 코드가 첫 문장을 붙이고 온도를 올린다. 행적·가르침에서는 모델이 그 말을 쓰면 다시 쓰게 한다.
+DEBATE_TEMPLATE = """{near}질문: {question}
 
-이 질문에 맞는 구절이 없다. "직접 다룬 문제가 아니다"라는 첫 문장은 이미 앞에 붙는다. 다시 쓰지 말고 바로 이어서 답하라.
-의견이 갈리는 문제면 세상 사람들의 생각을 먼저 말하고, "그러나 나는"으로 네 가르침에 비춘 생각을 말하라. "그러나 나는"은 한 번만 쓴다.
-취향·잡담처럼 의견이 갈릴 일이 아니면 찬반 없이 한두 문장으로 짧게 답하라.
-네 가르침과 어긋나는 생각을 네 것으로 말하지 마라. "구절"이라는 말은 답에 쓰지 마라.
-있지도 않은 네 말을 인용하지 마라. 구체적인 투자·의료·법률 지시는 하지 마라."""
+이 질문은 네가 직접 다룬 문제가 아니다. "직접 다룬 문제가 아니다"라는 첫 문장은 이미 앞에 붙는다. 다시 쓰지 말고 바로 이어서,
+세상 사람들의 생각을 먼저 말하고, "그러나 나는"으로 네 가르침에 비춘 생각을 말하라. "그러나 나는"은 한 번만 쓴다.
+네 가르침과 어긋나는 생각을 네 것으로 말하지 마라. {near_rule}있지도 않은 네 말을 인용하지 마라. 구체적인 투자·의료·법률 지시는 하지 마라."""
+
+# 토론에는 0.40 이상 구절 최대 3개를 "가까운 구절"로 준다 — 피터 틸 영생 질문에 막 8:35~36 이 답의 중심이 됐다 (6.21).
+# 근거로 보이지는 않는다 (sources 에 안 넣음 — 앱이 "직접 다루지 않은 질문"과 출처를 같이 띄우게 되므로)
+NEAR_BLOCK = """가까운 구절:
+{passages}
+
+"""
+NEAR_RULE = "가까운 구절 가운데 질문과 맞는 것이 있으면 그 뜻에 기대라. 맞지 않는 구절은 쓰지 마라. "
+
+CHAT_TEMPLATE = """질문: {question}
+
+이 질문은 취향이나 잡담이다. "직접 다룬 문제가 아니다"라는 첫 문장은 이미 앞에 붙는다. 다시 쓰지 말고 바로 이어서,
+찬반 없이 한두 문장으로 짧게, 네 생각이 드러나게 답하라."""
+
+# 행적 — 자기 삶을 남의 기록처럼 말했다 ("성경은 그 무게를 밝히지 아니하였느니라", "성경에 기록되어 있지 아니하니라")
+HISTORY_NOTE = """
+
+이 질문은 네가 살면서 겪은 일을 묻는다. 네가 겪은 일로 1인칭으로 답하라.
+구절에 없는 세부는 지어내지 말고 아는 만큼만 말하라. 기록·책·성경에 무엇이 적혔는지를 말하지 마라."""
 
 # ── 사이비·이단 (2026-10-12 사용자 결정) ──
 # 이런 질문은 찬반을 나누지 않고 무조건 경계하게 한다. 근거 구절은 검색이 아니라 문구로 고른다
@@ -64,16 +80,23 @@ CULT_NOTE = """
 # 2차: LLM 판단 — "삶이 고통스러운데 계속 살아야 할 이유가 있습니까?" 처럼 정규식이 못 잡는
 #      위기 신호를 모델이 가린다. 위기면 검색을 건너뛰고 고정 안내 뒤에 짧은 말만 붙인다.
 # 2026-10-12: 같은 호출에서 "미혹"(재림주·선지자 판별 질문)도 함께 가린다 (CLAUDE.md 6.21). 위기가 언제나 먼저다.
+# 2026-10-14: 질문 종류(행적·가르침·토론·잡담)도 같은 호출에서 정한다 (B안). 위기는 **본인 생명에 관한 말**로 좁혔다 —
+#   「돈 걱정으로 잠이 안 옵니다」에 109 안내가 나갔다 (사용자 결정: 죽음·살기 싫다처럼 생명을 직접 말할 때만, 단순 걱정은 제외)
 SAFETY_PATTERNS = re.compile(
     r"자살|자해|죽고\s*싶|죽어\s*버리|사라지고\s*싶|없어지고\s*싶|살기\s*싫|살아갈\s*자신|"
     r"살\s*이유가?\s*없|끝내고\s*싶|목숨을?\s*끊|뛰어내리|손목을?\s*긋")
 
-CLASSIFY_PROMPT = """다음 메시지를 아래 셋 중 하나로 분류하라. 한 단어로만 답하라.
-위기: 쓴 사람 본인이 자해·자살을 생각하거나 삶을 포기하려는 위기로 보인다. 확실하지 않으면 위기.
-미혹: 어떤 사람이나 단체가 재림 예수·재림주·메시아·보혜사·선지자·구원자인지 묻거나, 그렇다고 하는 사람·단체를 믿고 따라도 되는지 묻는다.
-일반: 그 밖의 모든 것. 성경 속 인물이 선지자인지, 예수의 재림 자체, "당신"이 누구인지를 묻는 것도 일반이다.
+CLASSIFY_PROMPT = """다음은 {name}에게 한 질문이다. 아래 여섯 가지 중 하나로 분류하라. 한 단어로만 답하라.
+위기: 쓴 사람 본인이 죽고 싶다·살기 싫다·자해처럼 자기 생명에 관한 말을 한다. 걱정·불면·스트레스·슬픔만으로는 위기가 아니다. 자기 생명에 관한 말인데 확실하지 않으면 위기.
+미혹: 어떤 사람이나 단체가 재림 예수·재림주·메시아·보혜사·선지자·구원자인지 묻거나, 그렇다고 하는 사람·단체를 믿고 따라도 되는지 묻는다. 성경 속 인물이 선지자인지, 예수의 재림 자체는 미혹이 아니다.
+행적: {name} 본인이 살면서 겪은 일·한 일·느낀 것을 묻는다.
+가르침: 삶·고통·사랑·용서·돈·죽음·믿음·마음처럼 {name}가 가르치거나 다룬 주제나 개념을 묻는다. 개인의 고민도 여기다.
+토론: {name}가 다룰 수 없었던 현대·전문 주제로 의견이 갈리는 문제다 (과학 이론, 기술, 정치 등).
+잡담: 취향·추천·일상 잡담·실용 정보를 묻는다.
 
-메시지: {question}"""
+질문: {question}"""
+
+LABELS = ("위기", "미혹", "행적", "가르침", "토론", "잡담")
 
 SAFETY_NOTICE = """지금 많이 힘드신 것 같습니다. 이 이야기는 혼자 안고 있지 마시고, 믿을 수 있는 사람이나 전문가에게 꼭 말해 주세요.
 자살예방 상담전화 109 (24시간, 무료) 로 전화하시면 지금 바로 이야기를 들어 줄 사람이 있습니다.
@@ -85,21 +108,19 @@ SAFETY_TEMPLATE = """상대가 이렇게 말했다: "{question}"
 상대가 여기 있다는 것, 이 대화가 끝이 아니라는 것만 전하라. 상담전화·전문가 이야기는 반복하지 마라."""
 
 
-def _classify(question: str) -> tuple[str, str]:
-    """("위기" | "미혹" | "일반", 판단 근거 "regex" | "llm"). 위기 정규식이 잡으면 호출 없이 끝낸다.
-    사이비 이름 정규식이 잡혀도 분류는 부른다 — 위기 판단을 건너뛰지 않기 위해서다."""
+def _classify(question: str, name: str) -> tuple[str, str]:
+    """(LABELS 중 하나, 판단 근거 "regex" | "llm"). 위기 정규식이 잡으면 호출 없이 끝낸다.
+    사이비 이름 정규식이 잡혀도 분류는 부른다 — 위기 판단을 건너뛰지 않기 위해서다.
+    모르는 답이 오면 "가르침" — 답할 수 있는 질문을 "다루지 않았다"로 놓치는 쪽이 더 나쁘다."""
     if SAFETY_PATTERNS.search(question):
         return "위기", "regex"
     from .llm import get_llm
-    resp = get_llm().invoke([HumanMessage(content=CLASSIFY_PROMPT.format(question=question))])
-    verdict = resp.text.strip()[:6]
-    if "위기" in verdict:
-        return "위기", "llm"
-    if "미혹" in verdict:
-        return "미혹", "llm"
-    if CULT_PATTERNS.search(question):
+    resp = get_llm().invoke([HumanMessage(content=CLASSIFY_PROMPT.format(question=question, name=name))])
+    verdict = resp.text.strip()[:10]
+    label = next((l for l in LABELS if l in verdict), "가르침")
+    if label != "위기" and CULT_PATTERNS.search(question):
         return "미혹", "regex"
-    return "일반", "llm"
+    return label, "llm"
 
 
 def _declined(persona, text: str) -> bool:
@@ -171,9 +192,10 @@ def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
     persona = personas.get(persona_key)
 
     # 안전 판단이 먼저다. 위기면 검색·근거 구절을 쓰지 않는다 (구절에서 죽음의 수사를 끌어올 수 있다)
-    label, how = _classify(question)
+    label, how = _classify(question, persona.name)
+    log.info("[%s] 분류: %s (%s)", persona_key, label, how)
     safety, cult = label == "위기", label == "미혹"
-    open_ = False           # 근거 구절이 없어 "직접 다룬 문제가 아니다" + 찬반으로 답하는 경우
+    open_ = False           # 토론·잡담 — 코드가 "직접 다룬 문제가 아니다"를 붙인다
     must = None             # 답변에 반드시 들어가야 할 말 (guard 가 확인)
     if safety:
         log.info("[%s] 안전 경로 (%s)", persona_key, how)
@@ -196,28 +218,41 @@ def answer(persona_key: str, question: str, top_k: int | None = None) -> dict:
             log.info("[%s] 검색 %d개 중 %d개 채택 (최고 %.3f)",
                      persona_key, len(hits), len(kept),
                      hits[0]["score"] if hits else 0.0)
-        if kept:
+            if label in ("행적", "가르침") and not kept:
+                kept = hits[:3]     # 그 사람의 주제라고 분류됐다 — 기준선 아래라도 가장 가까운 구절로 답하게 한다
+            if label in ("토론", "잡담") or not kept:
+                open_ = True
+        if open_ and label == "잡담":
+            user = CHAT_TEMPLATE.format(question=question)
+        elif open_:
+            near = kept[:3]
+            user = DEBATE_TEMPLATE.format(
+                near=NEAR_BLOCK.format(passages=_passages(near)) if near else "",
+                near_rule=NEAR_RULE if near else "",
+                question=question)
+        elif not safety:
             user = USER_TEMPLATE.format(passages=_passages(kept), question=question)
             if cult:
                 user += CULT_NOTE.format(cult_line=persona.cult_line)
-        else:
-            open_ = True
-            user = NO_CONTEXT.format(question=question)
+            elif label == "행적":
+                user += HISTORY_NOTE
+        if open_:
+            kept = []               # 토론·잡담은 근거로 보이지 않는다
 
     answer_text, retries = _generate(
         persona_key, persona, user, safety, s,
         temperature=s.llm_temperature_open if open_ else None,
         must_include=must,
-        # 첫 문장은 코드가 붙이므로 모델이 또 쓰면 두 번 나온다
-        must_not_include=persona.open_line if open_ else None)
+        # 토론·잡담은 코드가 첫 문장을 붙이므로 또 쓰면 두 번 나온다. 행적·가르침에서는 아예 쓰면 안 된다 (B안)
+        must_not_include=None if safety else persona.open_line.split(".")[0])
 
     if safety:
         answer_text = SAFETY_NOTICE + "\n\n" + answer_text
     elif open_:
         answer_text = persona.open_line + " " + answer_text
     elif kept and not cult and _declined(persona, answer_text):
-        # 구절은 있었지만 질문에 답하지 못한다고 모델이 판단했다 — 앱에는 근거 구절 없음으로 보인다
-        log.info("[%s] 구절이 질문에 답하지 못함 (모델 판단) — 근거 없음으로 표시", persona_key)
+        # 다시 쓰게 해도 모델이 끝내 "다루지 않았다"로 시작했다 — 앱에는 근거 구절 없음으로 보인다
+        log.info("[%s] 재생성 뒤에도 '다루지 않았다'로 시작 — 근거 없음으로 표시", persona_key)
         kept = []
 
     return {
