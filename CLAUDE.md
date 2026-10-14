@@ -1493,6 +1493,13 @@ mobile/lib/
   테스트는 `find.text` 대신 `test/text_finders.dart` 의 `findText`/`findTextContaining` (그 문자를 빼고 비교).
   검증 `test/keep_words_test.dart` — 좁은 폭에서 줄이 띄어쓰기에서만 바뀌고, 처리하지 않은 글은 낱말 가운데서 끊긴다는 것까지 잰다. 앱 테스트 전체 45개.
   에뮬레이터에서 대화창·첫 화면·로그인 화면 확인 (빈 네모 같은 깨진 글자 없음)
+- **안 쓰는 자산 정리 (2026-10-14)**: 글꼴 HiMelody(12.0MB)·NanumPenScript(3.1MB)·Jua(2.0MB)와 옛 일러스트 `philosophers-monochrome-v1.png`(2.6MB) —
+  코드 어디서도 안 쓰는데 앱에 들어가던 약 20MB 를 `pubspec.yaml` 과 저장소에서 지웠다 (라이선스 OFL 파일도 같이). 쓰는 글꼴은 고운바탕 2종(16MB)뿐.
+  **release APK 59.3MB** (모든 CPU 종류를 담은 단일 APK. `--split-per-abi` 나 한글 글꼴 서브셋으로 더 줄일 수 있다 — 미적용).
+  `output/illustration-samples/` 의 v1 은 그림 출처 기록이라 남겼다
+- **디자인 수정 요청서 (2026-10-14)**: [`docs/design-requests-2026-10-14.md`](docs/design-requests-2026-10-14.md) — Codex 에게 넘길 다섯 가지.
+  ① 설정·메뉴·확인 창·신고 창·시크릿 화면을 브랜드 톤으로 ② 내 질문 말풍선 보라색(#7638FA) 제거 ③ **근거 출처를 접지 않고 칩으로**(본문은 여전히 안 보여줌)
+  ④ 바둑판 카드에 이름, 2열 유지하되 빈칸 없이 ⑤ 대화창에 철학자 초상·이름이 들어간 기다림 표시. 지켜야 할 key·규칙·완료 기준을 함께 적었다
 - 패키지: `http`, `shared_preferences`. 상태 관리 패키지(provider/riverpod)는 안 썼다 — `ChangeNotifier` + `AnimatedBuilder` 로 충분한 규모.
   Codex 가 UI 를 만들 때 원하면 그때 붙인다
 
@@ -1512,6 +1519,14 @@ mobile/lib/
 | `ui/home_shell.dart` | 로그인한 계정의 홈. 계정마다 `ChatController` 를 새로 만들고 대화를 **계정별 폴더**(`chats/<uid>/`)에 저장. 아래 탭 화면(`MainTabs`)을 띄운다 |
 | `ui/settings_screen.dart` | 계정 정보(이름·로그인 방식·이메일)와 로그아웃(확인 창). 예전 바둑판 오른쪽 위 계정 메뉴는 2026-10-12 없앴다 |
 
+- **로그인 화면을 가렸다 (2026-10-14, 사용자 결정 — 포트폴리오 시연용, "그냥 가리고 자동으로 넘어가게")**:
+  `state/auth.dart` 의 `const loginScreenEnabled = false` 한 곳. 첫 화면을 누르면 로그인 화면 없이 **"로그인 없이 사용 중"**(기기 ID, 토큰 없음)으로
+  바로 홈에 간다 — 디버그·릴리스 모두 (`AuthController.useWithoutLogin`). 전에 로그인해 둔 계정이 있으면 그 계정으로 들어간다.
+  이 상태에서는 설정의 로그아웃을 숨긴다 (눌러도 다시 들어오므로). Firebase 로그인 코드·로그인 화면은 그대로 있고, `true` 로 바꾸면 예전 흐름.
+  서버가 `AUTH_REQUIRED=false` 일 때만 동작한다. 앞의 "Apple 버튼이 눌러도 오류" 문제도 이것으로 화면에서 사라졌다.
+  검증 `auth_flow_test.dart` +2 (가린 상태: 첫 화면 → 바로 홈 / 전에 로그인한 계정은 그대로). 기존 로그인 시험은 `AuthGate(showLogin: true)` 로 돈다.
+  에뮬레이터(릴리스 빌드)에서 첫 화면 → 탭 → 바로 홈, 설정에 "로그인 없이 사용 중"·로그아웃 없음 확인.
+  **릴리스 빌드에는 서버 주소를 바꾸는 메뉴가 없고 기본값이 에뮬레이터 주소(10.0.2.2)라, 실기기에서 시연하려면 디버그 빌드나 배포된 서버가 필요하다**
 - 로그인 유지: Firebase 가 기기에 저장하므로 다시 켜면 `authStateChanges` 가 바로 사용자를 준다 → 첫 화면을 누르면 로그인 화면 없이 홈.
   첫 화면이 떠 있는 동안 로그인 상태 확인이 끝나므로 누른 뒤 로딩은 거의 안 보인다
 - **화면 디자인은 Codex 가 다듬는 중** (앱 이름 "쉼표,", `ui/app_theme.dart` 다크 테마, 2026-10-10).

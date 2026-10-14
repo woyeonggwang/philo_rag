@@ -223,12 +223,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ].join(' · '),
                       ),
               ),
-              ListTile(
-                key: const Key('signout'),
-                leading: const Icon(Icons.logout),
-                title: const Text('로그아웃'),
-                onTap: _confirmSignOut,
-              ),
+              // 로그인 화면을 가린 동안 "로그인 없이 사용 중"인 사람에게는 로그아웃이 의미가 없다 (눌러도 다시 들어온다)
+              if (!(user?.isDev ?? false) || loginScreenEnabled)
+                ListTile(
+                  key: const Key('signout'),
+                  leading: const Icon(Icons.logout),
+                  title: const Text('로그아웃'),
+                  onTap: _confirmSignOut,
+                ),
               const _Header('사용량'),
               ListTile(
                 key: const Key('usage'),

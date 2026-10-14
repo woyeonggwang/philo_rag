@@ -58,7 +58,7 @@ class FakeAuth implements AuthBackend {
 
 /// 앱을 켠다. [passTitle] 이면 첫 화면을 눌러 넘긴 상태로 돌려준다.
 Future<(SettingsStore, AuthController, FakeAuth)> _app(WidgetTester t,
-    {bool passTitle = false, bool available = true}) async {
+    {bool passTitle = false, bool available = true, bool showLogin = true}) async {
   SharedPreferences.setMockInitialValues({});
   final settings = SettingsStore();
   await settings.load();
@@ -69,6 +69,7 @@ Future<(SettingsStore, AuthController, FakeAuth)> _app(WidgetTester t,
       settings: settings,
       auth: auth,
       home: (_, user) => Scaffold(body: Text('HOME ${user.label}')),
+      showLogin: showLogin, // 아래 시험들은 로그인 화면을 켠 상태로 본다 (앱 기본값은 가려 둠)
     ),
   ));
   if (passTitle) {
@@ -93,7 +94,7 @@ void main() {
     // 다시 켜면 첫 화면이 또 나온다 — 한 번만이 아니다 (앱을 내렸다 다시 올린 것처럼 화면을 비웠다가 새로 그린다)
     await t.pumpWidget(const SizedBox());
     await t.pumpWidget(MaterialApp(
-        home: AuthGate(settings: settings, auth: auth, home: (_, u) => Text('HOME ${u.label}'))));
+        home: AuthGate(settings: settings, auth: auth, home: (_, u) => Text('HOME ${u.label}'), showLogin: true)));
     await t.pump();
     expect(find.byType(WelcomeScreen), findsOneWidget);
   });
@@ -184,10 +185,32 @@ void main() {
         scrollable: find.byType(Scrollable).first); // 화면 맨 아래에 있다 (입력칸도 Scrollable 이라 목록을 지정)
     await t.tap(find.byKey(const Key('dev-skip')));
     await t.pump();
-    expect(findText('HOME 개발용 (로그인 안 함)'), findsOneWidget);
+    expect(findText('HOME 로그인 없이 사용 중'), findsOneWidget);
     expect(await auth.idToken(), isNull); // 서버는 기기 ID 로 센다
     await auth.signOut();
     await t.pump();
     expect(find.byType(LoginScreen), findsOneWidget);
+  });
+
+  testWidgets('로그인 화면을 가린 기본 상태: 첫 화면을 누르면 로그인 없이 바로 홈 (2026-10-14)', (t) async {
+    expect(loginScreenEnabled, isFalse); // 앱 기본값
+    final (_, auth, backend) = await _app(t, showLogin: false);
+    backend.emit(null); // 로그인한 계정 없음
+    await t.pump();
+    await t.tapAt(const Offset(200, 120));
+    await t.pump(); // 로딩 → 그린 뒤 로그인 없이 들어간다
+    await t.pump();
+    expect(find.byType(LoginScreen), findsNothing);
+    expect(findText('HOME 로그인 없이 사용 중'), findsOneWidget);
+    expect(await auth.idToken(), isNull); // 서버는 기기 ID 로 센다
+  });
+
+  testWidgets('로그인 화면을 가려도 전에 로그인한 계정이 있으면 그 계정으로 들어간다', (t) async {
+    final (_, _, backend) = await _app(t, showLogin: false);
+    backend.emit(const AppUser(uid: 'u1', email: 'me@example.com', provider: 'google.com'));
+    await t.pump();
+    await t.tapAt(const Offset(200, 120));
+    await t.pump();
+    expect(findText('HOME me@example.com'), findsOneWidget);
   });
 }

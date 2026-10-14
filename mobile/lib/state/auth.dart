@@ -11,6 +11,11 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+/// 로그인 화면을 보여줄지 (2026-10-14, 사용자 결정: 포트폴리오 시연용으로 가리고 자동으로 넘어간다).
+/// false 면 첫 화면을 누른 뒤 로그인 없이 바로 홈으로 간다 — 서버에는 기기 ID 로 요청한다 (AUTH_REQUIRED=false 일 때만 된다).
+/// 전에 로그인해 둔 계정이 있으면 그 계정으로 들어간다. true 로 바꾸면 예전처럼 로그인 화면이 나온다 (Firebase 로그인 코드는 그대로).
+const loginScreenEnabled = false;
+
 /// 로그인한 사용자. 화면 표시와 대화 저장 폴더 구분(uid)에 쓴다.
 class AppUser {
   final String uid;
@@ -22,11 +27,11 @@ class AppUser {
 
   const AppUser({required this.uid, this.email, this.displayName, required this.provider});
 
-  /// 디버그 빌드의 "로그인 없이 계속". 서버에는 토큰 없이 기기 ID 로 요청한다.
+  /// 로그인 없이 쓰는 중 (로그인 화면을 가렸거나, 디버그 빌드의 "로그인 없이 계속"). 서버에는 토큰 없이 기기 ID 로 요청한다.
   bool get isDev => provider == 'dev';
 
   /// 화면에 보일 이름
-  String get label => displayName?.isNotEmpty == true ? displayName! : (email ?? (isDev ? '개발용 (로그인 안 함)' : uid));
+  String get label => displayName?.isNotEmpty == true ? displayName! : (email ?? (isDev ? '로그인 없이 사용 중' : uid));
 }
 
 /// 화면에 그대로 보여줄 로그인 오류 문장
@@ -137,6 +142,12 @@ class AuthController extends ChangeNotifier {
   /// 디버그 빌드 전용 — Firebase 설정 전에도 앱을 시험할 수 있게. 릴리스 빌드에서는 아무 일도 안 한다.
   void continueWithoutLogin() {
     if (!kDebugMode) return;
+    useWithoutLogin();
+  }
+
+  /// 로그인 없이 들어간다 (빌드 종류와 무관). 로그인 화면을 가렸을 때(loginScreenEnabled == false) AuthGate 가 부른다.
+  void useWithoutLogin() {
+    if (_devUser != null) return;
     _devUser = const AppUser(uid: 'local', provider: 'dev');
     _status = AuthStatus.signedIn;
     _error = null;

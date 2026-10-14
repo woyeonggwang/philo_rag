@@ -62,8 +62,8 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  # 앱에서 쓰는 것만 넣는다 — 안 쓰는 글꼴 3개·옛 일러스트 v1(약 20MB)을 2026-10-14 뺐다
   assets:
-    - assets/images/philosophers-monochrome-v1.png
     - assets/images/philosophers-monochrome-v2.png
     - assets/images/philosophers-light-v1.png
   fonts:
@@ -73,15 +73,6 @@ flutter:
           weight: 400
         - asset: assets/fonts/GowunBatang-Bold.ttf
           weight: 700
-    - family: HiMelody
-      fonts:
-        - asset: assets/fonts/HiMelody-Regular.ttf
-    - family: NanumPenScript
-      fonts:
-        - asset: assets/fonts/NanumPenScript-Regular.ttf
-    - family: Jua
-      fonts:
-        - asset: assets/fonts/Jua-Regular.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

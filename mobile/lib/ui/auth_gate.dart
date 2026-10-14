@@ -2,7 +2,7 @@
 ///
 ///   켤 때마다 첫 화면(소개) → 화면을 누르면
 ///     → 로그인돼 있음   : 바로 홈 (로그인 화면을 건너뛴다)
-///     → 로그인 안 됨    : 로그인 화면
+///     → 로그인 안 됨    : 로그인 화면 — 지금은 가려 두었다. 로그인 없이 바로 홈 (loginScreenEnabled, 2026-10-14)
 ///     → 아직 확인 중    : 잠깐 로딩
 ///
 /// 첫 화면은 "설치 후 한 번만"이 아니라 **켤 때마다** 나온다 (사용자 결정 2026-10-10. 처음엔 한 번만 보이게 했었다).
@@ -23,7 +23,16 @@ class AuthGate extends StatefulWidget {
   /// 로그인 뒤 보여줄 화면. 계정이 바뀌면 새로 만들어지도록 사용자별 key 를 붙인다.
   final Widget Function(BuildContext context, AppUser user) home;
 
-  const AuthGate({super.key, required this.settings, required this.auth, required this.home});
+  /// false 면 로그인 화면 대신 로그인 없이 바로 홈으로 (기본은 [loginScreenEnabled]. 테스트가 바꿔 쓴다)
+  final bool showLogin;
+
+  const AuthGate({
+    super.key,
+    required this.settings,
+    required this.auth,
+    required this.home,
+    this.showLogin = loginScreenEnabled,
+  });
 
   @override
   State<AuthGate> createState() => _AuthGateState();
@@ -48,6 +57,11 @@ class _AuthGateState extends State<AuthGate> {
         }
         if (auth.status == AuthStatus.signedIn && user != null) {
           return KeyedSubtree(key: ValueKey('home-${user.uid}'), child: widget.home(context, user));
+        }
+        if (!widget.showLogin) {
+          // 화면을 그리는 중에 상태를 바꾸지 않도록 그린 뒤에 넘긴다
+          WidgetsBinding.instance.addPostFrameCallback((_) => auth.useWithoutLogin());
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
         return LoginScreen(auth: auth);
       },

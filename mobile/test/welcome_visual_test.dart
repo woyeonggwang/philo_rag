@@ -15,7 +15,6 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     await (FontLoader('GowunBatang')..addFont(rootBundle.load('assets/fonts/GowunBatang-Regular.ttf'))).load();
-    await (FontLoader('NanumPenScript')..addFont(rootBundle.load('assets/fonts/NanumPenScript-Regular.ttf'))).load();
     const key = Key('preview');
     await tester.pumpWidget(RepaintBoundary(key: key, child: MaterialApp(
       theme: (brightness == Brightness.dark ? AppTheme.dark : AppTheme.light).copyWith(

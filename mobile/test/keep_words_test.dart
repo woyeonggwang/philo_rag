@@ -25,7 +25,7 @@ List<int> _lineEnds(String text, double width) {
 
 void main() {
   test('낱말 안의 글자 사이에만 단어 잇기 문자를 넣는다', () {
-    expect(keepWords('아모르파티는 운명애다'), '아${wordJoiner}모${wordJoiner}르${wordJoiner}파${wordJoiner}티${wordJoiner}는 운${wordJoiner}명${wordJoiner}애${wordJoiner}다');
+    expect(keepWords('아모르파티는 운명애다'), '${'아모르파티는'.split('').join(wordJoiner)} ${'운명애다'.split('').join(wordJoiner)}');
     expect(keepWords('설정'), '설정'); // 한 낱말짜리(버튼·탭 이름)는 그대로
     expect(keepWords('첫 줄\n둘째 줄').split('\n').length, 2); // 줄바꿈은 그대로
     const url = 'https://example.com/a-very-long-address-that-must-be-able-to-wrap';
