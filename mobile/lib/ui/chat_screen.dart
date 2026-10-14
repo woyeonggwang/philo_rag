@@ -537,6 +537,6 @@ class MessageBubble extends StatelessWidget {
   }
 }
 
-/// 말풍선에 보이는 글 (복사할 때도 이것). 문장 끝 공백 두 칸 + 줄바꿈(마크다운 줄바꿈)은 정리한다 (CLAUDE.md 12절)
+/// 말풍선에 보이는 글 (복사할 때도 이것). 문장 끝 공백 두 칸 + 줄바꿈(마크다운 줄바꿈)은 정리한다 (CLAUDE.md 5.3)
 String bubbleText(ChatMessage m) =>
     m.text.replaceAll(RegExp(r'[ \t]+\n'), '\n').trim();

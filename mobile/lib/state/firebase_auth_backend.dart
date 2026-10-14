@@ -1,6 +1,6 @@
 /// [AuthBackend] 의 Firebase Authentication 구현 (2026-10-10).
 ///
-/// 필요한 설정 (CLAUDE.md 13절 "로그인"):
+/// 필요한 설정 (CLAUDE.md 5.4):
 ///   - Firebase 프로젝트 + Android 앱(com.philorag.philo_rag, SHA-1 등록) → google-services.json 을 android/app/ 에
 ///   - 콘솔 Authentication 에서 Google · Apple · 이메일/비밀번호 사용 설정
 ///   - Apple 은 Apple Developer Program(유료) 의 Services ID·키가 있어야 켜진다

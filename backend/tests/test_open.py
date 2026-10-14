@@ -1,5 +1,5 @@
-"""근거 구절이 없을 때의 찬반 답변과 사이비 질문 경로 (2026-10-12, CLAUDE.md 6.21).
-LLM 은 가짜다 — API 호출 없음 (CLAUDE.md 2.3). 임베딩·인덱스는 실제로 로딩한다.
+"""근거 구절이 없을 때의 찬반 답변과 사이비 질문 경로 (2026-10-12, CLAUDE.md 4.3).
+LLM 은 가짜다 — API 호출 없음 (CLAUDE.md 0절). 임베딩·인덱스는 실제로 로딩한다.
 
 실행: backend 폴더에서  python -m pytest tests -q
 """
@@ -245,7 +245,7 @@ def test_history_question_answers_as_lived_experience(client, fake, monkeypatch)
 
 
 def test_debate_gets_near_passages_hidden_from_sources(client, fake, monkeypatch):
-    """토론에는 0.40 이상 구절을 "가까운 구절"로 주되 근거로 보이지 않는다 — 피터 틸 질문 (6.21)."""
+    """토론에는 0.40 이상 구절을 "가까운 구절"로 주되 근거로 보이지 않는다 — 피터 틸 질문."""
     monkeypatch.setattr(retriever, "search", lambda *a, **k: [_hit("8:35~8:38", 0.45, "whosoever will save his life shall lose it")])
     f = fake(PRO_CON, label="토론")
     body = _ask(client, "jesus", "피터 틸이 이 세상에서의 영생을 이루려고 한다는데 어떻게 보십니까?")

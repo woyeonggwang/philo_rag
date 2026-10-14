@@ -3,7 +3,7 @@
 ///  "원전 출처"라는 이름도 이때 "답의 근거"로 바꿨다.)
 /// 각 칩은 한글 작품명 + 위치("마태복음 3:1~3:15") 뿐이다 — 칩은 누를 수 없고 본문도 보여주지 않는다
 /// (사용자 결정 2026-09-22). 서버 호출은 없다. 작품명 한글 표기는 서버가 work_ko 로 보내 준다 (backend/app/works.py).
-/// http 를 직접 쓰지 않는다 (CLAUDE.md 13절).
+/// http 를 직접 쓰지 않는다 (CLAUDE.md 5.1).
 library;
 
 import 'package:flutter/material.dart' hide Text;

@@ -67,7 +67,7 @@ def resolve_user(authorization: str | None, x_user_id: str | None) -> str:
 
 def resolve(authorization: str | None, x_user_id: str | None) -> tuple[str, str | None]:
     """(사용자 ID, 인증된 이메일 또는 None). 이메일은 토큰이 email_verified 일 때만 준다 —
-    이메일 가입은 인증 메일을 보내지 않아 남의 주소로도 가입되기 때문이다 (CLAUDE.md 12절)."""
+    이메일 가입은 인증 메일을 보내지 않아 남의 주소로도 가입되기 때문이다 (CLAUDE.md 4.8)."""
     if authorization:
         scheme, _, token = authorization.partition(" ")
         if scheme.lower() != "bearer" or not token.strip():

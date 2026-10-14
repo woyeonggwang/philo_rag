@@ -1,6 +1,6 @@
 """LLM 프로바이더 팩토리.
 
-.env 의 LLM_PROVIDER 하나로 교체할 수 있게 한다 (CLAUDE.md 2.2).
+.env 의 LLM_PROVIDER 하나로 교체할 수 있게 한다 (CLAUDE.md 4.5).
 필요한 프로바이더의 패키지만 설치돼 있으면 된다.
 """
 from functools import lru_cache
@@ -34,7 +34,7 @@ def get_llm(temperature: float | None = None):
 
     if p == "openai":
         # gpt-5.6 계열(sol/terra/luna)은 추론 모델이라 기본값 medium 이면 보이지 않는 사고 토큰이
-        # 출력 요금으로 청구된다. reasoning_effort="none" 으로 끈다 (CLAUDE.md 6.18).
+        # 출력 요금으로 청구된다. reasoning_effort="none" 으로 끈다 (CLAUDE.md 4.5).
         # max_tokens 는 langchain-openai 가 max_completion_tokens 로 자동 변환한다.
         from langchain_openai import ChatOpenAI
         if not s.openai_api_key:
@@ -46,7 +46,7 @@ def get_llm(temperature: float | None = None):
                           reasoning_effort=s.openai_reasoning_effort or None, **common)
 
     if p == "groq":
-        # Groq 도 OpenAI 호환이다. 무료 티어에 카드가 필요 없고 추론이 매우 빠르다 (CLAUDE.md 6.15).
+        # Groq 도 OpenAI 호환이다. 무료 티어에 카드가 필요 없고 추론이 매우 빠르다 (CLAUDE.md 4.5).
         # 한도는 요청 수가 아니라 토큰 수가 먼저 걸린다 — 하루 20만 토큰 / 우리 호출 평균 3,093 토큰.
         from langchain_openai import ChatOpenAI
         if not s.groq_api_key:

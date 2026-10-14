@@ -1,5 +1,5 @@
 /// 백엔드 HTTP 클라이언트. 앱에서 서버를 부르는 곳은 여기뿐이다.
-/// UI(lib/ui/) 는 이 파일의 함수만 쓰고 http 패키지를 직접 쓰지 않는다 (CLAUDE.md 13절).
+/// UI(lib/ui/) 는 이 파일의 함수만 쓰고 http 패키지를 직접 쓰지 않는다 (CLAUDE.md 5.1).
 library;
 
 import 'dart:convert';
@@ -43,7 +43,7 @@ class PhiloRagClient {
   /// `Authorization: Bearer` 로 보내고, 서버는 계정 기준으로 한도를 센다 (backend/app/auth.py).
   final Future<String?> Function()? idToken;
 
-  /// LLM 응답이 10~35초 걸린다 (CLAUDE.md 12절). 재생성이 겹치면 더 길어질 수 있어 넉넉히 잡는다.
+  /// LLM 응답은 보통 5~12초다 (CLAUDE.md 6절). 재생성이 겹치면 더 길어질 수 있어 넉넉히 잡는다.
   final Duration askTimeout;
   final http.Client _http;
 
@@ -119,7 +119,7 @@ class PhiloRagClient {
     return (j as List<dynamic>).map((e) => ReportItem.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  /// POST /ask — 앱이 보내는 것은 {persona, question} 뿐이다 (CLAUDE.md 2.1).
+  /// POST /ask — 앱이 보내는 것은 {persona, question} 뿐이다 (CLAUDE.md 4.2).
   Future<AskResponse> ask(String persona, String question) async {
     final j = await _postJson(
         '/ask', {'persona': persona, 'question': question}, askTimeout);

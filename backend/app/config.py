@@ -13,23 +13,23 @@ class Settings(BaseSettings):
 
     # LLM
     llm_provider: str = "google"          # google | groq | openai | openrouter | anthropic | ollama
-    llm_model: str = "gemini-3.6-flash"   # .env 가 항상 덮어쓴다. 3.8 은 하루 20요청이라 쓰지 않는다 (6.10)
+    llm_model: str = "gemini-3.6-flash"   # .env 가 항상 덮어쓴다. 3.8 은 하루 20요청이라 쓰지 않는다
     llm_temperature: float = 0.0          # 6.16: 0 이 길이·규칙 준수에 유리. 창작은 온도로 안 줄어든다
-    # 근거 구절이 없을 때 "직접 다룬 문제가 아니다" + 찬반 양쪽을 말하는 답변의 온도 (2026-10-12 사용자 결정, CLAUDE.md 6.21)
+    # 근거 구절이 없을 때 "직접 다룬 문제가 아니다" + 찬반 양쪽을 말하는 답변의 온도 (2026-10-12 사용자 결정, CLAUDE.md 4.3)
     llm_temperature_open: float = 0.7
-    llm_max_tokens: int = 4096           # Gemini 는 사고 토큰도 이 한도에 포함된다. 2048 은 잘렸다 (9.2)
+    llm_max_tokens: int = 4096           # Gemini 는 사고 토큰도 이 한도에 포함된다. 2048 은 잘렸다
     # Gemini 사고(thinking) 제어. 둘 다 비어 있으면 모델 기본값을 쓴다.
     #   3.x 계열: llm_thinking_level = low | medium | high  (3.8-flash 는 minimal 거부)
     #   2.5 계열: llm_thinking_budget = 0(끔) | -1(자동) | 토큰 수
     llm_thinking_level: str = ""
     llm_thinking_budget: int | None = None
 
-    # 로컬 LLM (Ollama). 테스트 전용 — 배포 모델이 아니다 (CLAUDE.md 6.11)
+    # 로컬 LLM (Ollama). 테스트 전용 — 배포 모델이 아니다 (CLAUDE.md 4.5)
     ollama_base_url: str = "http://localhost:11434"
     ollama_num_ctx: int = 8192            # 기본 4096 은 구절 5개(≈3,500토큰) + 답변에 빠듯하다
     ollama_keep_alive: str = "30m"        # 요청 사이에 모델을 VRAM 에서 내리지 않게
     # qwen3.5 같은 사고(thinking) 모델은 기본값이면 num_predict 를 사고에 다 쓰고 본문이 잘린다.
-    # 페르소나 답변에 사고 과정은 필요 없다. None 이면 모델 기본 동작 (CLAUDE.md 6.14)
+    # 페르소나 답변에 사고 과정은 필요 없다. None 이면 모델 기본 동작 (CLAUDE.md 4.5)
     ollama_reasoning: bool | None = False
 
     google_api_key: str = ""
@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
     # OpenAI gpt-5.6 계열은 추론 모델이다. 기본값 medium 이면 사고 토큰이 출력 요금으로 청구된다.
     # "none" 이면 추론이 꺼지고, 동시에 temperature 를 쓸 수 있게 된다
-    # (추론이 켜져 있으면 gpt-5 계열은 temperature=1 로 고정된다). CLAUDE.md 6.18
+    # (추론이 켜져 있으면 gpt-5 계열은 temperature=1 로 고정된다). CLAUDE.md 4.5
     # gpt-5 계열에만 보낸다. 빈 값이면 파라미터 자체를 보내지 않는다 (gpt-4o 계열은 이 파라미터를 모른다)
     openai_reasoning_effort: str = "none"   # none | low | medium | high | xhigh | max | (빈 값)
     openai_api_key: str = ""
@@ -47,19 +47,19 @@ class Settings(BaseSettings):
     # 임베딩
     embedding_model: str = "BAAI/bge-m3"
     embedding_device: str = "cuda"
-    # fp16 으로 올리면 VRAM 이 2.4GB -> 1.2GB 로 줄어 그만큼 LLM 에 쓸 수 있다 (CLAUDE.md 6.14).
+    # fp16 으로 올리면 VRAM 이 2.4GB -> 1.2GB 로 줄어 그만큼 LLM 에 쓸 수 있다 (CLAUDE.md 4.4).
     # 검색 점수 차이는 소수점 셋째 자리 수준이라 인덱스를 다시 만들 필요가 없다.
     embedding_dtype: str = "float16"      # float16 | float32
 
     # 경로
     index_dir: Path = BACKEND / "data" / "index"
 
-    # 규칙 위반 시 재생성 횟수 (CLAUDE.md 6.13). 0 이면 검사만 하고 재생성하지 않는다
+    # 규칙 위반 시 재생성 횟수 (CLAUDE.md 4.7). 0 이면 검사만 하고 재생성하지 않는다
     max_retries: int = 3
 
     # 검색
     top_k: int = 5
-    # 이보다 낮은 구절은 버린다. 구절이 질문에 답하는지는 점수가 아니라 모델이 판단한다 (CLAUDE.md 6.21, 2026-10-12).
+    # 이보다 낮은 구절은 버린다. 구절이 질문에 답하는지는 점수가 아니라 분류가 정한다 (CLAUDE.md 4.4).
     # 0.45 였을 때 예수 「바람직한 삶」(0.448)이 근거 없음으로 떨어졌다 — 예수는 답할 질문 0.448~ / 못 할 질문 ~0.442 로
     # 점수만으로는 가를 수 없다. 니체·부처도 "점심 메뉴" 0.512, "진화론" 0.505 처럼 겹친다
     min_score: float = 0.40

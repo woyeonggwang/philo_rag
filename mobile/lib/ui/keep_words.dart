@@ -6,7 +6,7 @@
 /// 화면 파일은 Flutter 의 Text 대신 이 Text 를 쓴다:
 ///     import 'package:flutter/material.dart' hide Text;
 ///     import 'keep_words.dart';
-/// 새 화면을 만들 때도 이렇게 할 것 (CLAUDE.md 13절). 복사할 글(대화 복사)은 원래 문자열에서 만든다 — 이 문자는 화면에만 들어간다.
+/// 새 화면을 만들 때도 이렇게 할 것 (CLAUDE.md 5.6). 복사할 글(대화 복사)은 원래 문자열에서 만든다 — 이 문자는 화면에만 들어간다.
 library;
 
 import 'package:flutter/material.dart' as m;

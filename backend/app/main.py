@@ -1,7 +1,7 @@
 """FastAPI 서버.
 
 앱은 {persona, question} 만 보낸다. 검색·프롬프트 조립·LLM 호출·API 키 보관은 전부 여기서 한다.
-(CLAUDE.md 2.1 — 앱에 키를 넣지 않는 이유)
+(CLAUDE.md 4.2 — 앱에 키를 넣지 않는 이유)
 
 실행:
     uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -42,7 +42,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="철학 RAG API", version="0.1.0", lifespan=lifespan)
 
 # 개발 단계에서는 에뮬레이터·실기기에서 바로 붙을 수 있게 열어둔다.
-# 배포 전에 반드시 좁힐 것. (CLAUDE.md 12절 — 인증 미설계. 사용량 제한은 plans.py)
+# 배포 전에 반드시 좁힐 것. (CLAUDE.md 8절)
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
@@ -82,7 +82,7 @@ class AskResponse(BaseModel):
     answer: str
     grounded: bool
     safety: bool = False       # 자해·자살 암시가 감지돼 안전 안내가 앞에 붙었는지
-    retries: int = 0           # 규칙 위반으로 다시 생성한 횟수 (CLAUDE.md 6.13)
+    retries: int = 0           # 규칙 위반으로 다시 생성한 횟수 (CLAUDE.md 4.7)
     glossary: list[GlossaryItem] = []   # 답변 속 용어·호칭의 뜻. 각주용 (glossary.py)
     sources: list[Source]
     usage: UsageInfo | None = None      # 요금제와 오늘 사용량 (plans.py)
@@ -109,7 +109,7 @@ STATIC = Path(__file__).resolve().parent / "static"
 @app.get("/chat", include_in_schema=False)
 def chat_page():
     """개발용 채팅 테스트 화면 (static/chat.html). /ask 를 그대로 부르므로 질문마다 LLM 비용이 든다.
-    배포 전에 지울 것 (CLAUDE.md 12절)."""
+    배포 전에 지울 것 (CLAUDE.md 8절)."""
     return FileResponse(STATIC / "chat.html", media_type="text/html; charset=utf-8")
 
 

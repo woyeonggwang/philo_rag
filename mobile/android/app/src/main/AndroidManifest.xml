@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- 개발 서버는 http:// (10.0.2.2 / LAN IP). Android 9+ 는 평문 HTTP 를 기본 차단하므로 허용한다.
-         배포 시 https 로 바꾸고 usesCleartextTraffic 을 지울 것 (CLAUDE.md 13절) -->
+         배포 시 https 로 바꾸고 usesCleartextTraffic 을 지울 것 (CLAUDE.md 5.5) -->
     <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:label="철학 RAG"

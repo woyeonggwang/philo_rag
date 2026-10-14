@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SuttaCentral bilara-data (Bhikkhu Sujato 영역, CC0) -> 부처 코퍼스 .txt (규모 A, CLAUDE.md 6.20).
+"""SuttaCentral bilara-data (Bhikkhu Sujato 영역, CC0) -> 부처 코퍼스 .txt (규모 A, CLAUDE.md 3.3).
 
 출처: https://github.com/suttacentral/bilara-data  (translation/en/sujato/sutta/…)
 라이선스: CC0 1.0 — 저작권 완전 포기. Gutenberg 와 달리 raw.githubusercontent.com 은 셸에서 바로 받힌다.

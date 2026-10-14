@@ -1,1631 +1,522 @@
-# CLAUDE.md — 철학 RAG 프로그램
+# CLAUDE.md — 쉼표, (철학자 RAG 챗봇)
 
-철학자 페르소나(예수 / 니체 / 부처)로 답하는 RAG 챗봇 + Android 앱.
+철학자 페르소나(니체 · 예수 · 부처)로 답하는 RAG 챗봇. FastAPI 백엔드 + Flutter Android 앱. 모노레포 `D:\ai_project\philo_rag`.
 이 문서는 **확인된 사실만** 기록한다. 미확인 항목은 `[확인필요]`로 표시한다.
+**지금 상태만 적는다.** 바뀐 결정의 경위, 모델별 비교, 옛 측정치 같은 지난 기록은 커밋 `70bdc08` 의 CLAUDE.md(약 1,600줄)에 있다 —
+`git show 70bdc08:CLAUDE.md`.
 
-최종 갱신: 2026-10-12
+최종 갱신: 2026-10-14
 
 ---
 
-## 0. 저장소 구조
+## 0. 작업 규칙 (먼저 읽을 것)
 
-모노레포. 저장소 루트 = `D:\ai_project\philo_rag`
+1. **API(LLM) 호출은 사용자가 지시할 때만 한다.** 측정·검증 목적이라도 스스로 토큰을 쓰지 않는다.
+   비교·분석은 웹 조사와 로컬 계산(`tiktoken`, 로컬 검색)으로 한다
+2. **실패나 이상한 답을 찾으면 고치기 전에 사용자에게 먼저 묻는다.** 새로 발견한 이상한 답은 바로 고치지 않고
+   평가 세트(`scripts/eval_questions.json`)에 넣는다
+3. 요청 범위 밖의 기능을 덧붙이지 않는다 (근거 구절 본문 번역을 만들었다가 걷어낸 일이 있다)
+4. 프롬프트는 짧게 쓴다. 규칙을 쌓을수록 답이 길어지고 어색해졌다
+5. 키는 `backend/.env` 에만 둔다. `.env.example` 은 커밋되므로 키를 넣지 않는다. `.env` 내용을 출력하지 않는다.
+   `mobile/android/app/google-services.json` 도 커밋하지 않는다 (gitignore)
+6. 역할: UI 디자인은 Codex, 백엔드와 앱 기능(API·상태·저장)은 Claude. **Codex 는 커밋하지 않는다 — Codex 수정분도 Claude 가 커밋·푸시한다**
+7. 앱의 새 화면은 Flutter 의 `Text` 대신 `keep_words.dart` 의 `Text` 를 쓴다 (5.6)
+8. 코퍼스에서 제외한 글(역자 서문·유고 등)을 다시 넣거나 보관하자는 제안은 하지 않는다 (3.2)
+9. 포트폴리오 자료는 `output/Portfolio/` 에 둔다
+
+**완성선 (2026-10-14 사용자 결정)**: 포트폴리오 + 지인 대상 비공개 베타. 사용자는 **백엔드 직군**으로 지원한다.
+유료 출시·결제·Windows 버전·iOS·대화 기억·스트리밍은 범위 밖이다.
+
+## 1. 저장소 구조
 
 ```
 philo_rag/
-├─ CLAUDE.md
-├─ README.md
-├─ .gitignore
-├─ backend/              FastAPI 서버 (RAG 검색 + LLM 호출)
-│  ├─ .env.example       키 없이 형식만. 실제 .env 는 커밋 금지
-│  ├─ requirements.txt
-│  ├─ app/               FastAPI 애플리케이션 코드
+├─ README.md             포트폴리오 첫 화면
+├─ CLAUDE.md             이 문서
+├─ backend/              FastAPI 서버 (분류 · 검색 · 프롬프트 · LLM 호출 · 규칙 검사)
+│  ├─ app/               4절
+│  ├─ tests/             pytest — 가짜 LLM, API 호출 없음
+│  ├─ .env.example       키 없이 형식만
 │  └─ data/
-│     ├─ corpus/         .txt / _units.jsonl (커밋함)
-│     └─ index/          FAISS 인덱스 (커밋 안 함 — 재생성 가능)
-├─ scripts/              코퍼스 빌드 / 인덱스 빌드 스크립트
-└─ mobile/               Flutter 앱 (flutter create 로 생성 예정)
+│     ├─ corpus/         .txt + _units.jsonl (커밋)
+│     ├─ index/          페르소나별 FAISS (gitignore — 재생성 가능)
+│     └─ usage.db · reports.db   (gitignore)
+├─ scripts/              코퍼스·인덱스 빌드, 평가, 서버 기동
+├─ mobile/               Flutter 앱
+├─ docs/                 Codex 에게 넘긴 디자인 요청서
+└─ output/
+   ├─ Portfolio/         화면 캡처 · 답변 평가 보고서
+   ├─ design-2026-10-14/ 디자인 미리보기 (테스트 렌더링)
+   └─ illustration-samples/  일러스트 생성 기록 (그림 출처)
 ```
 
-## 1. 개발 환경 (확정, 2026-09-16 실측)
+## 2. 개발 환경
 
-| 항목 | 값 | 비고 |
+PC 가 두 대다. **PC 별 차이는 저장소 밖에만 둔다** — ① `backend/.env` ② 사용자 환경변수·`flutter config` ③ conda 환경의 내용물(torch 빌드).
+커밋되는 파일은 두 PC 에서 같다. 새 경로·장치 설정이 필요하면 코드가 아니라 `.env` 항목으로 만든다 (`.env.example` 에는 집 PC 기준 기본값).
+
+| | 집 PC | 두 번째 PC |
 |---|---|---|
-| OS | Windows 11 25H2 (10.0.26200.9445), locale ko-KR | |
-| Flutter | 3.47.4 stable / Dart 3.13.3 | SDK 위치 `C:\dev\flutter` |
-| Android Studio | Quail 2026.1.2 | |
-| Android SDK | 36.0.0 | `C:\Users\USER\AppData\Local\Android\Sdk` |
-| **cmdline-tools** | **22.0 고정** | 23.x 금지 — 6절 참조 |
-| Python | 3.11.16 | **conda 환경 `philo-rag`**. venv 아님 — 아래 참조 |
-| PyTorch | 2.11.0+cu128 | `arch list` 에 `sm_120` 포함 확인 완료 |
-| NVIDIA 드라이버 | 595.97 (CUDA 13.2) | cu128 빌드와 호환 |
-| GPU | RTX 5070 (Blackwell, sm_120) | BGE-M3 임베딩 로컬 실행용, VRAM 12GB |
+| OS | Windows 11 25H2, ko-KR | 같음 |
+| GPU | RTX 5070 (Blackwell sm_120, 12GB) | 없음 (i5-10210U, RAM 20GB) |
+| Flutter | 3.47.4 / Dart 3.13.3, `C:\dev\flutter` | 3.47.5 / Dart 3.13.4, `D:\DevProgram\flutter` |
+| Android SDK | `C:\Users\USER\AppData\Local\Android\Sdk` | `D:\DevProgram\Android\Sdk` (`ANDROID_HOME`, `flutter config --android-sdk`) |
+| cmdline-tools | **22.0 고정** | **22.0 고정** |
+| Android Studio | Quail 2026.1.2 | `D:\DevProgram\AndroidStudio` (설정 `D:\DevProgram\AndroidStudio-data`, `STUDIO_PROPERTIES`) |
+| 에뮬레이터 | `Pixel_9` (API 36, google_apis x86_64) | `Pixel_9_API_36` (`ANDROID_AVD_HOME=D:\DevProgram\Android\avd`) |
+| Python | conda `philo-rag` 3.11.16 | 같은 환경 이름. 실제 위치 `D:\DevProgram\conda-envs\philo-rag` 를 `C:\Users\USER\anaconda3\envs\philo-rag` 에 정션 |
+| torch | 2.11.0+cu128 | 2.14.0+cpu |
+| `.env` 임베딩 | `EMBEDDING_DEVICE=cuda` / `EMBEDDING_DTYPE=float16` | `cpu` / `float32` |
+| 그 밖 | VS C++ 워크로드 없음 (Windows 빌드 불가) | JDK `D:\DevProgram\AndroidStudio\jbr`, `GRADLE_USER_HOME=D:\DevProgram\gradle`, `HF_HOME=D:\DevProgram\huggingface`, VS 2026 C++ 워크로드 있음 |
 
-**두 번째 PC (2026-09-21 구축) — 개발 도구는 전부 D 드라이브 `D:\DevProgram` 아래.** 위 표와 경로가 다르다:
+- **파이썬은 conda 를 쓴다.** PATH 의 `python` 은 Microsoft Store 스텁이다. 인터프리터는 두 PC 모두 `C:\Users\USER\anaconda3\envs\philo-rag\python.exe`
+- **torch 는 `requirements.txt` 에 넣지 않는다.** 집 PC 는 `pip install torch --index-url https://download.pytorch.org/whl/cu128` 뒤
+  `torch.cuda.get_arch_list()` 에 `sm_120` 이 있는지 확인한다. 두 번째 PC 는 `.../whl/cpu`
+- 인덱스는 집 PC 에서 만들어 복사한다 (gitignore). GPU fp16 으로 만든 인덱스를 CPU fp32 로 질의해도 점수가 소수 셋째 자리까지 같다.
+  두 번째 PC 에서 인덱스를 새로 빌드하지 않는다 (시간 단위)
+- Flutter SDK 는 저장소 밖에 둔다 (SDK 자체가 git 저장소다). Windows 개발자 모드 ON (플러그인이 심볼릭 링크를 쓴다)
+- **cmdline-tools 23.x 금지.** 23.0 부터 `sdkmanager` 가 폐기돼 `flutter doctor --android-licenses` 가 프롬프트 없이 끝난다
+  ([flutter#191558](https://github.com/flutter/flutter/issues/191558)). SDK Manager → SDK Tools → Show Package Details 에서 22.0 을 고른다
 
-| 항목 | 이 PC 의 위치 | 비고 |
-|---|---|---|
-| Flutter 3.47.5 / Dart 3.13.4 | `D:\DevProgram\flutter` | 사용자 PATH 에 `D:\DevProgram\flutter\bin` |
-| Android Studio | `D:\DevProgram\AndroidStudio` | 설정·캐시는 `D:\DevProgram\AndroidStudio-data` (`STUDIO_PROPERTIES` 환경변수로 지정) |
-| Android SDK | `D:\DevProgram\Android\Sdk` | `ANDROID_HOME`·`ANDROID_SDK_ROOT` + `flutter config --android-sdk`. cmdline-tools 는 `cmdline-tools\latest` 에 **22.0** |
-| AVD (가상기기) | `D:\DevProgram\Android\avd` | `ANDROID_AVD_HOME`. `Pixel_9_API_36` (google_apis x86_64) 생성됨 |
-| JDK | `D:\DevProgram\AndroidStudio\jbr` (OpenJDK 25) | `flutter config --jdk-dir` 로 지정 |
-| Gradle 캐시 | `D:\DevProgram\gradle` | `GRADLE_USER_HOME` |
-| Visual Studio 2026 18.10 | `D:\UnityHub\VisualStudio` | C++ 데스크톱 워크로드 추가 완료, `flutter doctor` 통과 |
-| conda 환경 `philo-rag` (Python 3.11.16) | `D:\DevProgram\conda-envs\philo-rag` | **`C:\Users\USER\anaconda3\envs\philo-rag` 에 정션**을 걸어 `.vscode/` 의 인터프리터 경로가 두 PC 에서 같다 |
-| PyTorch | 2.14.0**+cpu** | 이 PC 는 **GPU 없음** (i5-10210U, 내장 그래픽, RAM 20GB). `pip install torch --index-url https://download.pytorch.org/whl/cpu` |
-| BGE-M3 모델 캐시 | `D:\DevProgram\huggingface` | `HF_HOME` 사용자 환경변수 |
+### 2.1 서버 띄우기
 
-- 이 PC 는 `flutter doctor` 전 항목 통과 (2026-09-21). Windows Hypervisor Platform 켬, Android Studio SDK 경로 확인 완료 (사용자).
-- **PC 별 차이는 전부 저장소 밖에 둔다 — 커밋되는 파일은 두 PC 에서 동일하다.** 차이가 사는 곳은 세 군데뿐이다:
-  ① `backend/.env` (gitignore) ② 사용자 환경변수·`flutter config` ③ conda 환경의 내용물(torch 빌드).
-  이 PC 의 `.env` 는 **`EMBEDDING_DEVICE=cpu` / `EMBEDDING_DTYPE=float32`**, 집 PC 는 `cuda` / `float16`. 나머지 값은 같다.
-  새 경로·장치 설정이 필요해지면 코드에 넣지 말고 `.env` 항목으로 만들 것 (`.env.example` 에는 집 PC 기준 기본값 + 주석).
-- 인덱스는 집 PC 에서 만든 `backend/data/index/` 를 복사해 왔다 (gitignore 라 git 으로 안 넘어온다. 코퍼스가 바뀌어 집에서 다시 빌드하면 또 복사).
-  GPU fp16 으로 만든 인덱스를 CPU fp32 로 질의해도 **점수가 9.2 의 기록과 소수 셋째 자리까지 같다** (마 28:1~17 0.466, 마 6:17~31 0.462).
-  이 CPU 로 인덱스를 새로 빌드하는 것은 피한다 (1,878 청크, 시간 단위).
-- 로컬 LLM(Ollama)은 이 PC 에서 쓰지 않는다. 프리셋 4(OpenAI) 그대로.
-- **`scripts/start_backend.bat` — 백엔드가 꺼져 있을 때만 최소화 창으로 띄운다** (8000 포트가 열려 있으면 아무것도 안 함, 몇 번 불러도 안전).
-  파이썬 경로가 두 PC 에서 같아(위 정션) 커밋해 둔다. Android Studio 에서는 External Tool "Start backend" 로 등록하고
-  Flutter 실행 구성 **`main.dart + backend`** 의 Before launch 에 걸어 두었다 — ▷ 한 번에 서버와 앱이 같이 뜬다.
-  이 두 설정은 저장소 밖(`AndroidStudio-data\config\tools\External Tools.xml`)과 gitignore 된 `mobile/.idea/runConfigurations/` 에 있어
-  **PC 마다 따로 만들어야 한다.** GUI 로는 Run > Edit Configurations > Before launch > + > Run External tool.
-  **집 PC 에도 만들었다 (2026-09-30).** 집 PC Android Studio 에는 **Flutter·Dart 플러그인이 아예 없었다** — 그래서 실행 버튼 옆이
-  "Add Configuration" 이었다. Android Studio 를 닫은 상태에서 `"C:\Program Files\Android\Android Studioin\studio64.exe" installPlugins io.flutter Dart`
-  로 설치했다 (켜져 있으면 "Only one instance" 로 거부). External Tool 은 `%APPDATA%\Google\AndroidStudio2026.1.2	ools\External Tools.xml` 에
-  직접 썼다 (명령은 절대경로 `D:i_project\philo_rag\scripts\start_backend.bat` — 두 PC 모두 같은 경로). 이 파일도 AS 가 꺼져 있을 때 써야 한다.
-  **Android Studio 에서는 저장소 루트가 아니라 `mobile\` 폴더를 연다.** 루트를 열면 Flutter 프로젝트로 인식되지 않는다.
-  서버 기동(모델 로딩)이 20초 안팎이라 첫 실행에 앱이 먼저 뜨면 "연결 실패"가 보일 수 있다 — 임시 화면의 "연결"을 다시 누르면 된다
-- **IDE 를 켜 둔 채 사용자 환경변수를 새로 만들면 그 IDE 와 자식 프로세스는 값을 못 받는다.** 2026-09-21 에 `HF_HOME` 을 만든 뒤
-  기존 VS Code 세션에서 서버를 띄웠더니 BGE-M3 2.2GB 를 C 의 기본 캐시에 다시 받았다 (기동 108초. 캐시가 맞으면 18초).
-  `start_backend.bat` 은 그래서 `HF_HOME` 이 없으면 레지스트리(`HKCU\Environment`)에서 직접 읽고, 모델이 캐시에 있으면 `HF_HUB_OFFLINE=1` 을 건다.
-- 원래 C 에 있던 SDK(2021년 잔재 포함 9.5GB)를 통째로 옮겼으므로 `platforms\android-24~31`, `system-images\android-22/24/30`,
-  `tools`, `patcher` 는 안 쓰는 옛 패키지다. 지워도 된다.
+- **VS Code F5** (`.vscode/launch.json`) — 인터프리터·`PYTHONUTF8=1`·작업 폴더가 들어 있고, 서버가 뜨면 `http://localhost:8000/chat` 이 열린다
+- **`scripts/start_backend.bat`** — 8000 포트가 비어 있을 때만 최소화 창으로 띄운다 (여러 번 불러도 안전). `HF_HOME` 이 없으면
+  레지스트리(`HKCU\Environment`)에서 읽고, 모델이 캐시에 있으면 `HF_HUB_OFFLINE=1` 을 건다. 기동(BGE-M3 로딩)은 20초 안팎
+- Android Studio 에서는 External Tool "Start backend"(명령 `D:\ai_project\philo_rag\scripts\start_backend.bat`)를 Flutter 실행 구성
+  **`main.dart + backend`** 의 Before launch 에 걸어 두었다 (두 PC 모두). 이 설정은 저장소 밖(`External Tools.xml`)과 gitignore 된
+  `mobile/.idea/runConfigurations/` 에 있어 PC 마다 따로 만든다. 집 PC 의 파일은 `%APPDATA%\Google\AndroidStudio2026.1.2\tools\External Tools.xml`,
+  Android Studio 가 꺼져 있을 때 써야 한다
+- **Android Studio 에서는 저장소 루트가 아니라 `mobile\` 을 연다.** 실행 전에 에뮬레이터를 먼저 켠다 — 꺼져 있으면 기기가 "Windows (desktop)" 로
+  골라져 `Unable to find suitable Visual Studio toolchain` 이 난다
+- 집 PC Android Studio 에 Flutter·Dart 플러그인이 없던 적이 있다. Android Studio 를 닫고
+  `"C:\Program Files\Android\Android Studio\bin\studio64.exe" installPlugins io.flutter Dart`
 
-- Flutter SDK는 저장소 **바깥**(`C:\dev\flutter`)에 둔다. 저장소 안에 넣으면 SDK 자체가 git 저장소라 중첩 문제가 생긴다.
-- `flutter doctor` 의 **Visual Studio `[!]`** 는 Windows 데스크톱 빌드용 컴포넌트가 빠져 있다는 뜻이다. Android 앱을 먼저 만들고
-  **Windows 버전도 만들 계획**이므로(2.1), 그때 Visual Studio Installer 에서 채운다. VS Community 2026 18.7 은 이미 설치돼 있고
-  (`C:\Program Files\Microsoft Visual Studio8\Community`), 필요한 것은 **"C++ 를 사용한 데스크톱 개발" 워크로드**의
-  `MSVC v142 - VS 2019 C++ x64/x86 build tools` · `C++ CMake tools for Windows` · `Windows 10 SDK` 세 가지다.
-  `flutter doctor -v` 가 정확한 목록을 알려준다.
-- Windows 개발자 모드 ON. 플러터 플러그인이 심볼릭 링크를 쓰기 때문에 필요하다.
-- **파이썬 환경은 conda 를 쓴다.** 이 PC 의 PATH 에 잡히는 `python` 은 Microsoft Store 스텁
-  (`AppData\Local\Microsoft\WindowsApps\python.exe`)이라 개발용으로 쓰지 않는다. `py` 런처도 설치돼 있지 않다.
-  실제 파이썬은 `C:\Users\USER\anaconda3` 이고, 기존 환경으로 `mlagents`, `unique3d-py311` 이 있다.
-  `philo-rag` 는 그것들과 완전히 분리된 별도 환경이므로 충돌하지 않는다.
-- **torch 는 `requirements.txt` 에 넣지 않는다.** 일반 pip 로 받으면 CPU 빌드가 깔려 임베딩이 GPU 를 못 쓴다.
-  `pip install torch --index-url https://download.pytorch.org/whl/cu128` 로 따로 설치하고,
-  `torch.cuda.get_arch_list()` 에 `sm_120` 이 있는지 반드시 확인한다.
+### 2.2 Windows 셸 함정
 
-## 2. 확정된 설계 결정
+- cmd 의 `set PYTHONUTF8=1 && uvicorn ...` 은 값이 `"1 "` 이 되어 파이썬이 죽는다. 붙여 쓰거나 F5 를 쓴다. uvicorn 로그 한글이 깨지면 `PYTHONUTF8=1`
+- Git Bash 의 `curl -d '{"question":"한글"}'` 은 본문을 cp949 로 보내 FastAPI 가 파싱에 실패한다. 한글 요청은 `/chat`·`/docs`·Python `urllib` 으로
+- 포트 점유 확인은 `netstat -ano | findstr :8000`, 종료는 PowerShell `Stop-Process` (Git Bash 에서는 `taskkill /F` 의 `/F` 가 경로로 바뀐다).
+  `Errno 10048 ... bind on address 8000` 은 이미 떠 있다는 뜻이다
+- 브라우저로 `http://0.0.0.0:8000` 은 열리지 않는다 (바인드 주소). `http://localhost:8000` 을 연다. `--host 0.0.0.0` 은 실기기 접속에 필요해 유지
+- Anaconda Prompt(cmd)에서 드라이브를 바꾸려면 `cd /d D:\...`
+- **IDE 를 켜 둔 채 새로 만든 사용자 환경변수는 그 IDE 와 자식 프로세스에 보이지 않는다** (`HF_HOME` 을 못 받아 BGE-M3 2.2GB 를 C 에 다시 받은 일이 있다)
+- 집 PC LAN IP `192.168.0.10`. 실기기에서 붙으려면 방화벽 인바운드 8000 허용 (관리자 PowerShell):
+  `New-NetFirewallRule -DisplayName "philo-rag backend 8000" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow`
+- 원격 컨테이너 셸에서는 gutenberg.org·archive.org·wikisource 가 정책상 403 이다 (재시도·우회하지 않는다). github·raw.githubusercontent·pypi 는 열린다.
+  Gutenberg 원본이 필요하면 사용자가 파일로 첨부한다
 
-### 2.1 앱 / 배포 구조 (2026-09-16 확정)
+## 3. 코퍼스
+
+### 3.1 원칙
 
 | 항목 | 결정 | 이유 |
 |---|---|---|
-| 앱 프레임워크 | **Flutter** | 한 코드베이스로 Android/iOS. Dart가 C#과 유사해 Unity 경험이 전이됨 |
-| 타깃 순서 | **① Android 앱 → ② Windows 데스크톱** | 앱을 먼저 완성하고 같은 코드베이스로 Windows 버전을 만든다. iOS 는 macOS 장비가 없어 빌드·심사 불가. 코드는 크로스플랫폼으로 유지 |
-| 백엔드 | **FastAPI 서버를 둔다** | 아래 두 가지 이유 |
-| 저장소 | 모노레포 1개 | 1인 개발, 규칙을 CLAUDE.md 하나로 공유 |
+| 언어 | 영어 공개 번역본 | 한국어 번역본은 저작권 보호 대상, 영어가 토큰이 적다 |
+| 답변 언어 | 한국어 (LLM 생성 단계) | |
+| 수록 기준 | 니체는 **본인이 직접 쓰고 스스로 출간한 글만**. 예수는 공관복음, 부처는 가장 이른 층의 경장 | 페르소나가 남의 말이나 철회한 주장을 자기 말로 하지 않게 |
+| 해설의 1인칭 변환 | 하지 않는다 | 쓰지 않은 문장을 본인 발언으로 만드는 것은 근거 조작이다 |
+| 인덱스 | 페르소나별 분리 `data/index/<persona>/` | 니체 질문에 마태복음이 섞이는 것을 구조로 막는다 |
 
-**백엔드를 두는 이유 (앱에서 LLM API 직접 호출을 배제한 근거):**
-
-1. APK는 압축을 풀어 문자열을 추출할 수 있다. 앱에 넣은 API 키는 공개된 것과 같다.
-2. BGE-M3는 파라미터 5억대 모델이고, FAISS는 공식 Flutter/모바일 바인딩이 없다. 검색 단계를 앱 안에서 실행할 수 없다.
-
-→ 앱은 `{persona, question}` 만 보내고, 검색·프롬프트 조립·LLM 호출·키 보관은 전부 서버가 한다.
-
-### 2.2 코퍼스 / RAG
-
-| 항목 | 결정 | 이유 |
-|---|---|---|
-| 코퍼스 언어 | **영어** | ① 기존 `mathe.txt`가 KJV 영어 ② 영어 토큰 소모가 적음 ③ 한국어 번역본은 저작권 보호 대상 |
-| 한국어 답변 | LLM 생성 단계에서 처리 | 코퍼스는 영어, 출력은 한국어 |
-| 페르소나 분리 | 철학자별 탭(인덱스) 분리 | 검색 결과 쏠림 방지 |
-| **수록 기준** | **니체가 직접 쓰고 스스로 출간한 텍스트만** | 아래 "제외 기준" 참조 |
-| 해설의 1인칭 변환 | **하지 않음** | 니체가 쓰지 않은 문장을 니체 발언으로 만드는 것 = 근거 조작 |
-| 임베딩 | BGE-M3, 로컬 GPU 실행 | 임베딩 비용 제거. 생성 호출만 외부 API |
-| 벡터 스토어 | **FAISS `IndexFlatIP`** (2026-09-16 확정) | 청크가 1,052개 규모라 근사 인덱스가 불필요하다. Flat 은 정확하고 충분히 빠르다. 벡터를 정규화하므로 내적 = 코사인 유사도 |
-| 인덱스 분리 | **페르소나별 디렉터리** `data/index/<persona>/` | 니체 질문에 마태복음이 섞여 나오는 것을 구조적으로 차단 |
-| 청크 크기 | **목표 512 / 최대 640 / 오버랩 96 토큰** (2026-09-16 확정) | 아래 "청킹 원칙" 참조. 근거는 실측 분포와 A/B 측정 |
-| 질의 언어 | **한국어 질의를 그대로 검색에 쓴다. 영어로 번역하지 않는다** (2026-09-16 확정) | 측정 결과 번역이 오히려 나빴다. 아래 참조 |
-| LLM | 개발: Gemini Flash 무료 티어 → 비교: OpenRouter → 배포: 승자 | 프로바이더는 환경변수로 교체 가능한 LangChain 패턴 유지 |
-
-### 2.3 LLM 프로바이더 운용 (2026-09-16 확정)
-
-| 프리셋 | 용도 | 상태 |
-|---|---|---|
-| 1. 로컬 `ollama` / **`qwen3.5:9b`** | 앱 작업, 파이프라인 회귀, 무료·무제한 | 대기 (6.14 비교 승자) |
-| **4. OpenAI 유료 `openai` / `gpt-5.6-luna`** | **현재 사용 중.** 질문 1개 $0.0009 | **활성·검증 완료.** `OPENAI_REASONING_EFFORT=none` 필수 (6.18) |
-| 1-B. Groq 무료 `groq` / `openai/gpt-oss-120b` | 품질·프롬프트 검증. 카드 불필요 | **키 등록 완료.** 분당 8,000 토큰 제약 (6.15) |
-| 2. Gemini 무료 `google` / `gemini-3.6-flash` | 프롬프트·안전 검증 (하루 20요청) | 필요할 때 토글 |
-| 3. OpenRouter 유료 `openrouter` | 배포·본격 검증 | 코드·의존성 준비 완료, 키만 없음 |
-
-- `.env` 에 세 프리셋이 주석으로 나란히 있다. 전환은 주석 토글 + 서버 재시작. 코드 변경 없음
-- ~~유료 전환은 미룬다~~ — 2026-09-18 OpenAI 결제·키 등록 완료. 프리셋 4(gpt-5.6-luna)가 활성이다 (6.18)
-- **API 호출은 사용자가 지시할 때만 한다.** 측정·검증 목적이라도 스스로 판단해 토큰을 쓰지 않는다.
-  비교·분석 요청은 기본적으로 웹 조사와 로컬 계산(`tiktoken`)으로 답한다
-- 로컬 모델(qwen3.5:9b)은 개발용이다. 안전 경로는 코드가 보장하므로(6.12) 노출 자체가 위험하진 않으나,
-  말투 위반이 5회 중 1회 남아 있어(6.14) 배포 품질은 아니다
-- **`.env.example` 에 키를 넣지 말 것.** 이 파일은 커밋된다. 실제 키는 `.env` 에만 넣는다 (2026-09-18 실수 사례)
-
-### 제외 기준 (2026-09-16 확정)
+### 3.2 제외 기준
 
 1. **타인의 글** — 역자 서문·해설·각주, 편집자(Oscar Levy) 노트, 엘리자베트 푀르스터-니체 서문
-2. **유고(Nachlass) 편집물** — 니체 본인 글이지만 출간하지 않은 노트. 잠정적 입장이 섞여 있어
-   페르소나가 니체가 철회한 주장을 말할 위험. 『권력에의 의지』 제외와 같은 기준
+2. **유고(Nachlass) 편집물** — 출간하지 않은 노트. 잠정적 입장이 섞여 있다. 『권력에의 의지』 제외와 같은 기준
 3. **중복** — 이미 코퍼스에 있는 텍스트의 축자 재인용
 4. **서지 부속물** — 목차, 판권지, 식자공 노트, PG 보일러플레이트
 
-**제외분은 보관하지 않는다 (2026-09-16 확정).** 엘리자베트 서문, Ludovici 주해 등 제외된 글은
-코퍼스에 다시 넣지 않으며, 별도 폴더에 보관하지도 않고, 재수집하지도 않는다.
-검색에 쓰이지 않는 텍스트를 저장소에 두는 것은 의미가 없다는 판단이다.
-무엇을 제외했는지는 각 `.txt` 머리말과 `scripts/build_*.py` 의 제외 로직에 남아 있어 근거로 충분하다.
-
-향후 이 결정을 되돌리자는 제안은 하지 않는다.
-
-### 청킹 원칙 (2026-09-16 확정)
-
-실측한 단위 길이 분포가 성격이 정반대인 두 덩어리였다. 전체 5,241단위 중 **91%가 128토큰 미만**이고,
-동시에 2,000토큰이 넘는 절도 있다.
-
-| 작품 | 단위 | 중앙값 | p90 | 최대 |
-|---|---|---|---|---|
-| Zarathustra | 3,489 | 31 | 43 | 333 |
-| Matthew | 1,071 | 27 | 45 | 71 |
-| Beyond Good and Evil | 315 | 74 | 786 | 1,726 |
-| Twilight of the Idols | 152 | 217 | 541 | 1,375 |
-| Ecce Homo | 73 | 581 | 1,147 | 1,799 |
-| The Antichrist | 62 | 581 | 1,006 | 1,787 |
-| Genealogy of Morals | 79 | 771 | 1,508 | 2,135 |
-
-그래서 **한쪽은 묶고 한쪽은 쪼갠다.**
-
-1. 목표 크기 이하의 단위는 **같은 구분(division) 안에서 연속으로 묶는다.** 차라투스트라와 마태복음은
-   단위가 30토큰 안팎이라 그대로 넣으면 문맥 없는 조각이 검색된다
-2. 최대 크기를 넘는 단위만 **문장 경계에서** 분할한다. 오버랩은 이때만 적용한다.
-   묶을 때는 경계가 이미 저자의 것이므로 오버랩이 불필요하다
-3. **고정 길이 분할 금지.** 아포리즘·절의 경계를 자르지 않는다
-4. 서로 다른 구분·작품·페르소나를 한 청크에 섞지 않는다
-
-적용 결과 (근사 토크나이저 기준 예행):
-
-| 페르소나 | 청크 | 토큰 중앙값 | 최대 | 640 초과 | 구분 섞임 |
-|---|---|---|---|---|---|
-| nietzsche | 977 | 468 | 638 | 0 | 0 |
-| jesus | 75 | 497 | 524 | 0 | 0 |
-
-### 검색 품질 A/B 측정 (2026-09-16)
-
-`scripts/eval_retrieval.py`. 질문 7개에 정답 구분을 지정하고 MRR / Hit@5 를 쟀다.
-
-| | MRR | Hit@5 |
-|---|---|---|
-| **512 한국어 (채택)** | **0.619** | 0.857 |
-| 256 한국어 | 0.512 | 0.714 |
-| 256 영어 | 0.462 | 0.857 |
-| 512 영어 | 0.262 | 0.429 |
-
-**결론 1 — 질의를 영어로 번역하면 오히려 나빠진다.** 코퍼스가 영어라 번역이 유리할 것으로
-예상했으나 반대였다. BGE-M3 가 한국어-영어 정렬을 이미 하고 있고, 번역이 뉘앙스를 깎는 것으로 보인다.
-백엔드에 질의 번역 단계를 넣지 않는다.
-
-**결론 2 — 청크를 256 으로 줄이면 문맥이 부족해져 나빠진다.** 512 를 유지한다.
-
-**한계**: 질문이 7개뿐이라 강한 근거는 아니다. 정답 구분은 사람이 지정한 것이라 잘못 찍었을 수 있다
-(「무리를 따르지 않고」 문항은 네 조건 모두 실패했는데, 군중 주제가 「시장의 파리들」·「왜소하게 만드는 덕」에
-더 많은 것을 보면 정답 지정이 틀렸을 가능성이 있다).
-답변 품질이 아쉬우면 질문 수를 늘려 다시 재는 것부터 한다.
-
-## 3. 코퍼스 포맷
-
-기존 `mathe.txt`(KJV 마태복음) 형식 계열.
-
-```
-Chapter 1
-1:1 The book of the generation of Jesus Christ...
-```
-
-**차라투스트라** — 담화 형식이라 단위 = 문단
-
-```
-Chapter 0. Zarathustra's Prologue
-[SS 1]
-0:1 When Zarathustra was thirty years old, ...
-```
-
-**나머지 5권** — 번호 붙은 아포리즘 형식이라 단위 = 니체가 매긴 절(節)
-
-```
-Division 1. Prejudices of Philosophers
-1:1 The Will to Truth, which is to tempt us to many a hazardous enterprise, ...
-```
-
-- 인용 ID: `<구분>:<절>`. 절 번호는 **니체 본인의 번호**를 그대로 쓴다
-- Division 0 = 서문. 번호 없는 구절은 순번 부여
-- `237A` 처럼 원문에 알파벳 접미가 붙은 절은 접미를 유지
-- 운문 블록은 한 단위로 묶고 줄바꿈·들여쓰기 보존
-- 곡선 따옴표는 ASCII 정규화, `_이탤릭_` 마크업 제거, 엠대시는 보존
-- 각 `.txt`마다 **`<작품명>_units.jsonl`** 동봉. `scripts/build_jsonl.py` 가 `.txt` 를 역파싱해 생성한다
-- JSONL 필드: `uid / seq / ref / persona / work / author / year / translator / pg_id / part /
-  division / division_title / section / section_suffix / author_section / numbered / anomaly / text`
-- **고유 키는 `ref` 가 아니라 `uid`** (`<파일명>#<순번>`). `ref` 는 `.txt` 에 적힌 그대로 두며 드물게 중복된다 (9절 참조)
-
-## 4. 수집 완료 현황 (6작품, 2026-09-16)
-
-전부 Project Gutenberg 퍼블릭 도메인. Levy 전집 영역본 기준.
-
-| 작품 | PG ID | 역자 | 연도 | 단위 | 단어 |
-|---|---|---|---|---|---|
-| Thus Spake Zarathustra | 1998 | Thomas Common | 1883–85 | 3,489 | 89,315 |
-| Beyond Good and Evil | 4363 | Helen Zimmern | 1886 | 315 | 62,032 |
-| The Genealogy of Morals | 52319 | Horace B. Samuel | 1887 | 79 | 51,700 |
-| The Twilight of the Idols | 52263 | Anthony M. Ludovici | 1889 | 152 | 29,340 |
-| The Antichrist | 52263 | Anthony M. Ludovici | 1895 | 62 | 27,645 |
-| Ecce Homo | 52190 | Ludovici / Paul V. Cohn | 1908 | 73 | 35,828 |
-| **합계** | | | | **4,170** | **295,860** (~393,000 토큰) |
-
-빌드 스크립트: `scripts/build_zarathustra.py`(1998 전용), `scripts/build_books.py`(나머지 4파일)
-
-### 절 번호 커버리지 검증 결과
-
-- BGE: 1–296 전부 존재 (65A, 73A, 237A 포함). 결번 없음
-- GM: 서문 1–8 / 1논문 1–17 / 2논문 1–25 / 3논문 1–28. 결번 없음
-- TI: 10개 장, 각 장 1–N 연속. 결번 없음
-- AC: 1–62 중 **61 번호 없음** — 원본 결함. 본문(르네상스·루터 대목)은 60에 붙어 있고 유실 없음
-- EH: 「Why I Am So Wise」가 1–7 (표준판은 8절), 「The Birth of Tragedy」가 1·3 — **원본에서 번호만 누락**.
-  본문은 앞 절에 합쳐진 상태로 존재하며 유실 없음
-
-### 예수 코퍼스 (3복음서, 2026-09-18)
-
-KJV 공관복음. Project Gutenberg 낱권 파일.
-
-| 작품 | PG ID | 장 | 절 | 단어 |
-|---|---|---|---|---|
-| The Gospel According to Matthew | — | 28 | 1,071 | 23,684 |
-| The Gospel According to Mark | 8041 | 16 | 678 | 15,166 |
-| The Gospel According to Luke | 8042 | 24 | 1,151 | 25,939 |
-| **합계** | | **68** | **2,900** | **64,789** |
-
-- 요한복음은 넣지 않았다. 공관복음과 문체·화법이 뚜렷이 달라 페르소나가 흔들린다
-- 빌드: `scripts/build_gospels.py <PG원본디렉터리>` -> `.txt`, 이어서 `build_jsonl.py` -> `_units.jsonl`
-- 장 결번 0, 절 번호 불연속 0, 중복 ref 0 (`build_gospels.py` 가 자동 검증한다)
-- **`mathe.txt` 가 25:46 에서 잘려 있었다** (2026-09-19 발견). 26~28장 161절이 `.txt` 에 없었고 커밋된 jsonl 에만 있었다.
-  jsonl 본문을 그대로 붙여 복원했다. 원인은 미상 (파일 mtime 2026-09-16 13:25). 9.2 의 "마 28:1~17 검색됨"은 jsonl 기준이라 인덱스는 멀쩡했다.
-  **`build_jsonl.py` 를 다시 돌리기 전에는 `.txt` 단위 수가 4절 표와 맞는지 볼 것** — 안 맞으면 jsonl 이 덮어써지며 유실된다
-
-### 부처 코퍼스 (빠알리 경장 8종, 2026-09-19)
-
-SuttaCentral `bilara-data` 의 **Bhikkhu Sujato 영역** (CC0 1.0 — 저작권 포기). 범위는 "규모 A": 소부 핵심 4종 + 핵심 설법 4편.
-빌드: `scripts/build_suttas.py` (원본을 GitHub raw 에서 직접 받는다. 사용자 첨부 불필요).
-
-| 작품 | 원전 | 단위 기준 | 구분 | 단위 | 단어 |
-|---|---|---|---|---|---|
-| Dhammapada (법구경) | Dhp 1~423 | 게송 | 26장 | 423 | 9,979 |
-| Sutta Nipata (숫타니파타) | Snp 1.1~5.19 | 게송 | 5품 73경 | 1,265 | 37,235 |
-| Udana (우다나·감흥어) | Ud 1.1~8.10 | 문단 | 8품 80경 | 641 | 26,035 |
-| Itivuttaka (여시어경) | Iti 1~112 | 문단 | 11품 112경 | 695 | 20,302 |
-| Dhammacakkappavattana (초전법륜경) | SN 56.11 | 문단 | 1 | 14 | 978 |
-| Satipatthana (염처경) | MN 10 | 문단 | 1 | 39 | 3,081 |
-| Kalama (깔라마경) | AN 3.65 | 문단 | 1 | 49 | 1,505 |
-| Mahaparinibbana (대반열반경) | DN 16 | 문단 | 6장 | 212 | 20,771 |
-| **합계** | | | | **3,338** | **119,886** |
-
-- 인용 ID: `<경 일련번호>:<게송/문단>` (모음집) 또는 `<장>:<문단>` (단일 경). 경의 원전 번호("1.8", "74")는 Division 제목 앞에 붙는다
-- 제외: 제목·소제목 줄(`0.x`, `*.0`), 역자 각주·HTML 태그. 자애경(Snp 1.8)은 숫타니파타에 들어 있다
-- 논장·율장·주석서·본생담·대승경전·Carus 『The Gospel of Buddha』류 편집물은 넣지 않는다 (니체의 "직접 쓴 것만" 기준과 같은 취지 —
-  붓다의 직접 저술은 없으므로 **가장 이른 층의 경장만**)
-- 대반열반경은 서사가 길어(장당 3~4천 단어) 문단 단위 그대로 청킹된다. 붓다의 마지막 말("모든 조건 지어진 것은 사라진다. 방일하지 말고 정진하라")이 여기 있다
-
-## 5. 작품별 제외 내역
+**제외분은 보관하지 않고 재수집하지 않는다.** 무엇을 뺐는지는 각 `.txt` 머리말과 `scripts/build_*.py` 의 제외 로직에 남아 있다.
 
 | 작품 | 제외한 것 |
 |---|---|
 | Zarathustra | 엘리자베트 서문(1905), Ludovici 부록 해설(1909), 목차, 각 부 제사(본문 축자 중복) |
 | Beyond Good and Evil | 식자공 노트, 목차, `[FOOTNOTE: ...]` 역주 |
-| Genealogy of Morals | Levy 편집자 노트, 목차, Samuel 역주(`[N] ... —H. B. S.`), **「Peoples and Countries」 27개 유고 단편**(Kennedy 역) |
-| Twilight of the Idols | Ludovici 역자 서문, 역주, **「The Hammer Speaketh」**(차라투스트라 III.29 축자 인용 = 중복) |
-| The Antichrist | Ludovici 역자 서문, 역주, **「The Eternal Recurrence」 + 차라투스트라 주해**(유고) |
-| Ecce Homo | Ludovici 역자 서문, 역주, Levy 편집자 노트, **시가 부록**(편집자가 노트에서 선별한 유고) |
+| Genealogy of Morals | Levy 편집자 노트, 목차, Samuel 역주, 「Peoples and Countries」 유고 단편 27개 |
+| Twilight of the Idols | 역자 서문, 역주, 「The Hammer Speaketh」(차라투스트라 III.29 축자 인용) |
+| The Antichrist | 역자 서문, 역주, 「The Eternal Recurrence」 + 차라투스트라 주해(유고) |
+| Ecce Homo | 역자 서문, 역주, Levy 노트, 시가 부록(편집자가 고른 유고. 「Hymn to Life」 가사는 루 살로메의 것) |
 
-**시가 부록 제외 근거**: 원문에 `HYMN TO LIFE. WORDS BY LOU SALOMÉ. MUSIC BY FRIEDRICH NIETZSCHE.`
-라고 명기돼 있다. 가사는 루 살로메의 것이다. 「Speeches, Parables, and Similes」도 번호가
-3, 11, 13, 14… 로 건너뛰어 편집자 선별임이 드러난다.
+### 3.3 수록 현황
 
-## 6. 시행착오 기록
+**니체** — Project Gutenberg, Levy 전집 영역본. 단위 = 차라투스트라는 문단, 나머지는 니체가 매긴 절
 
-### 6.1 Android cmdline-tools 는 22.0 에 고정한다 (2026-09-16)
-
-**증상**: `flutter doctor --android-licenses` 실행 시 약관 프롬프트가 뜨지 않고 즉시 종료.
-
-```
-WARNING: The SDK Manager CLI tool (sdkmanager) is deprecated. Android CLI will be used instead.
-Warning: The --licenses option is no longer needed.
-```
-
-이후 `flutter doctor` 는 `Android license status unknown` 또는 `Some Android licenses not accepted` 를 계속 표시.
-
-**원인**: Google이 cmdline-tools **23.0**부터 `sdkmanager` 를 폐기하고 `android` CLI로 대체했는데,
-Flutter가 아직 대응하지 않았다. Flutter 측 미해결 이슈다.
-([flutter#191558](https://github.com/flutter/flutter/issues/191558), [flutter#191963](https://github.com/flutter/flutter/issues/191963))
-
-**해결**: SDK Manager → SDK Tools 탭 → `Show Package Details` 체크 →
-`Android SDK Command-line Tools` 에서 23.x 해제하고 **22.0** 체크 → Apply.
-그 뒤 `flutter doctor --android-licenses` 가 정상 동작한다.
-
-**주의**: Flutter가 대응하기 전까지 cmdline-tools 를 최신으로 올리지 말 것.
-
-### 6.2 Flutter SDK zip 압축 해제 시 폴더가 한 겹 더 생긴다 (2026-09-16)
-
-탐색기 우클릭 "압축 풀기"로 풀면 `C:\dev\flutter_windows_3.47.4-stable\flutter\bin` 이 되어
-PATH에 등록한 `C:\dev\flutter\bin` 과 맞지 않는다. 최종 경로가 `C:\dev\flutter\bin\flutter.bat` 이 되도록 정리해야 한다.
-
-### 6.3 JSONL 은 원본 PG 파일 없이 .txt 역파싱으로 재생성한다 (2026-09-16)
-
-**상황**: 니체 6작품 중 차라투스트라를 뺀 5작품의 `.jsonl` 과 원본 Gutenberg 파일이 남아 있지 않았다.
-
-**해결**: `scripts/build_jsonl.py` 로 완성된 `.txt` 를 역파싱해 생성한다. `.txt` 머리말에 서지 정보가,
-`Division N. 제목` 줄에 구분이, `<구분>:<절> 본문` 줄에 인용 ID가 들어 있어 원본 없이도 복원된다.
-
-**검증**: 차라투스트라는 원본 `.jsonl` 이 남아 있어 대조가 가능했다.
-역파싱 결과가 **3,489 / 3,489 레코드 모두 ref·text 완전 일치**했다. 역파서가 옳다는 근거다.
-
-**주의**: `.txt` 에서 첫 줄 들여쓰기는 `"<ref> "` 접두사에 먹혀 사라진다. 운문 블록은
-이어지는 줄들의 공통 들여쓰기를 첫 줄에 되돌려야 원본과 일치한다. 이 처리를 빼면 24개 운문 단위가 어긋난다.
-
-### 6.4 Anaconda Prompt 는 cmd 라서 `cd` 로 드라이브가 안 바뀐다 (2026-09-16)
-
-`cd D:\ai_project\philo_rag\backend` 를 쳐도 현재 위치가 C: 그대로다. cmd 의 동작이다.
-`cd /d D:\...` 를 쓰거나, `D:` 를 먼저 입력한 뒤 `cd \ai_project\...` 로 이동한다.
-PowerShell 에서는 `cd` 만으로 드라이브가 바뀐다.
-
-### 6.5 Gutenberg 도메인은 컨테이너 셸에서 차단됨 (2026-09-01)
-
-**증상**: `curl https://www.gutenberg.org/...` → `curl: (56) CONNECT tunnel failed, response 403`
-
-**원인**: 조직 egress 정책. 프록시 안내 문서(`/root/.ccr/README.md`)에 "403/407 정책 거부는 재시도·우회하지 말고 보고하라"고 명시됨.
-
-**차단 확인**: `www.gutenberg.org`, `gutenberg.org`, `gutenberg.pglaf.org`, `aleph.gutenberg.org`,
-`gutendex.com`, `archive.org`, `en.wikisource.org`, `example.com`
-**셸 접근 가능**: `github.com`, `raw.githubusercontent.com`, `api.github.com`(저장소 스코프), `pypi.org`
-
-**해결**: 사용자가 브라우저에서 받아 **채팅에 파일로 첨부** → 업로드 디렉터리에서 처리.
-본문을 텍스트로 붙여넣으면 파일로 저장되지 않으므로 반드시 파일 첨부여야 한다.
-
-### 6.6 Gemini 모델명·무료 할당량·사고 토큰 (2026-09-16, 첫 /ask 호출에서 겪은 것)
-
-**모델명**: `gemini-2.0-flash` 는 404(폐기), `gemini-2.5-flash` 는 404("신규 사용자에게 제공 안 함").
-모델 목록은 문서를 믿지 말고 `google.genai.Client(api_key).models.list()` 로 직접 조회한다.
-`gemini-3.6-flash` 로 확정했다.
-
-**무료 할당량은 모델별이다**: `gemini-3.8-flash` 는 무료 티어가 **하루 20요청**이라 503 재시도 몇 번에 바닥났다.
-개발 중엔 3.8 을 쓰지 않는다. 429 메시지의 `quotaValue` 로 한도를 확인할 수 있다.
-
-**사고(thinking) 토큰이 `max_output_tokens` 를 잠식한다**: Gemini 3.x 는 기본 사고 수준이 높아
-1024 토큰이 사고에 다 쓰이고 답변이 `"...하지만 "` 에서 잘렸다.
-`.env` 의 `LLM_THINKING_LEVEL=low` 와 `LLM_MAX_TOKENS=2048` 로 해결. `minimal` 은 3.8-flash 가 400 으로 거부한다.
-2.5 계열은 `thinking_level` 대신 `LLM_THINKING_BUDGET` 을 쓴다 (`llm.py` 가 둘 다 지원).
-
-**503 UNAVAILABLE("high demand")** 은 구글 쪽 사정이다. google-genai 클라이언트가 3회 자동 재시도하며
-그 시간이 응답 지연에 그대로 더해진다 (재시도 없으면 10초대, 있으면 35~65초). 재시도도 할당량을 소모한다.
-
-### 6.7 langchain-core 1.x 는 `AIMessage.content` 가 문자열이 아닐 수 있다 (2026-09-16)
-
-Gemini 응답이 `[{"type": "text", "text": ..., "extras": {"signature": ...}}]` 블록 리스트로 와서
-`AskResponse.answer: str` 검증에 실패했다. `resp.content` 대신 **`resp.text`** (1.x 에선 property) 를 쓴다.
-
-### 6.8 Windows 콘솔·curl 인코딩 (2026-09-16)
-
-- uvicorn 로그의 한글이 깨지면 코드페이지(cp949) 문제다. `PYTHONUTF8=1` 을 켜고 실행하면 된다. 기능과 무관
-- **cmd 에서 `set PYTHONUTF8=1 && uvicorn ...` 은 안 된다.** cmd 의 `set` 은 `&&` 앞 공백까지 값에 넣어 `"1 "` 이 되고
-  파이썬이 `Fatal Python error: invalid PYTHONUTF8` 로 죽는다. 붙여 쓰거나(`set PYTHONUTF8=1&&uvicorn`) 두 줄로 나눈다.
-  이런 셸 함정을 피하려고 VS Code F5 실행(`.vscode/launch.json`)을 기본으로 한다
-- Git Bash 의 `curl -d '{"question":"한글"}'` 은 본문을 cp949 로 보내 FastAPI 가 `error parsing the body` 를 낸다.
-  한글 요청은 `/docs` 화면이나 Python(`urllib`) 으로 보낼 것
-- `pkill` 이 없다. 포트 점유 프로세스는 `netstat -ano | findstr :8000` → `taskkill /F /PID <pid>`
-- **`Errno 10048 ... bind on address 8000`** 은 서버가 이미 떠 있다는 뜻이지 실패가 아니다. Ctrl+Shift+B 로 띄운 게
-  살아 있는 상태에서 F5 를 또 누르면 이렇게 된다. 하나만 띄울 것. 원격 작업 중이라 Ctrl+C 를 못 치면
-  터미널 패널의 휴지통 아이콘(터미널 종료) 또는 위 `taskkill` 로 끈다
-- **브라우저로 `http://0.0.0.0:8000` 을 열면 `ERR_ADDRESS_INVALID`** 다. 서버 실패가 아니다. 0.0.0.0 은 "모든 네트워크에서 받는다"는
-  바인드 주소라 접속 주소로 쓸 수 없다 (크롬 계열이 차단). uvicorn 로그의 그 링크를 누르지 말고 `http://localhost:8000/docs` 를 연다.
-  기동 로그 "준비 완료" 줄에 올바른 링크를 찍게 했다 (2026-09-30). `--host 0.0.0.0` 자체는 실기기 접속에 필요하므로 유지
-- 집 PC LAN IP `192.168.0.10`. 노트북·실기기에서 붙으려면 방화벽 인바운드 8000 허용이 필요하다 (관리자 PowerShell):
-  `New-NetFirewallRule -DisplayName "philo-rag backend 8000" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow`
-
-### 6.9 근거 없음(NO_CONTEXT) 경로가 오히려 지어내기를 유도했다 (2026-09-16)
-
-**증상**: `grounded=false` 답변이 코퍼스에 없는 내용을 니체의 말처럼 했다.
-「주식 투자는 어떻게 시작해야 합니까?」에 "위험하게 사는 삶"(『즐거운 학문』 — 6작품 코퍼스에 없음)을 언급하고,
-"운명에 맞서라"로 끝맺었다. 이는 `ecce_homo.txt` 2:10 의 amor fati("wishes nothing to be different ...
-it must also be loved")와 **정반대**다. "삶의 주도권을 쥐고 위험을 무릅쓰라"는 투자 권유로도 읽혔다.
-예수 페르소나(「노트북은 어떤 걸 사는 게」)는 보물·진주 비유가 마 13:44, 13:46 에 실제로 있어 내용은 맞았지만
-같은 구조적 위험을 안고 있었고, "가장 값진 Pearl 하나"처럼 영어 단어가 섞여 나왔다.
-
-**원인**: `rag.py` 의 `NO_CONTEXT` 프롬프트가 "네가 실제로 말한 것 중 가장 가까운 것을 꺼내라"고 지시했다.
-근거 구절이 하나도 없는 상태에서 근거 있는 말을 하라고 시킨 셈이라, 모델이 **학습 기억**에서 끌어왔다.
-RAG 의 근거 보장은 검색된 구절에만 미친다. 기억에 기대는 순간 코퍼스 밖·정반대 주장이 나온다.
-
-**해결**: `NO_CONTEXT` 를 "저작 인용·'나는 ~라고 말했다' 금지, 다루지 않았다고 밝히고 멈춰라, 투자·의료·법률은
-네 영역이 아니라고 말하라, 두세 문장" 으로 교체. `personas.py` `_COMMON` 에 "답변 전체를 한국어로, 영어 단어 섞지 않음,
-고유명사도 한국어 표기(pearl -> 진주)" 추가. 재검증에서 C1·C2·C3 모두 2~3문장으로 "다루지 않았다" 에서 멈췄다 (9.1절).
-**→ 2026-10-12 사용자 결정으로 바뀜 (6.21)**: 멈추지 않고 "직접 다루지 않았다"를 먼저 밝힌 뒤 찬반을 말한다.
-
-**검증 방법**: `grounded=false` 답변은 **`backend/data/corpus/*.txt` 를 grep 해서 실제로 있는 내용인지 대조할 것.**
-없으면 모델이 학습 기억으로 지어낸 것이다. `grounded=true` 도 답변의 비유·표현이 `sources` 구절 안에 있는지 같은 방법으로 본다.
-
-### 6.10 Gemini 무료 티어는 신형 Flash 전부 하루 20요청이다 (2026-09-16)
-
-`gemini-3.8-flash` 에 이어 **`gemini-3.6-flash` 도 `quotaValue: 20`** (GenerateRequestsPerDayPerProjectPerModel-FreeTier).
-품질 점검 16문항을 한 번 돌리면 그날 할당량이 끝난다. 503 자동 재시도도 요청 수에 들어간다.
-개발을 계속하려면 ① 결제 활성화 ② flash-lite 계열 한도 확인 ③ OpenRouter 등 다른 프로바이더 — 셋 중 하나를 골라야 한다. 미결.
-
-### 6.11 로컬 LLM (Ollama + EXAONE) — 속도는 되지만 프롬프트 테스트용으로는 부족 (2026-09-16)
-
-**설치**: Ollama 0.34.1 → `D:\Program Files\Ollama` (winget `--location`). 모델 저장소는 사용자 환경변수
-`OLLAMA_MODELS=D:\ollama_models`. 모델 `exaone3.5:7.8b` (Q4, 4.8 GB, LG 공식 라이브러리, 비상업 라이선스).
-백엔드는 `LLM_PROVIDER=ollama` + `langchain-ollama` (`ChatOllama`, `num_ctx=8192`). RTX 5070 을 compute 12.0 으로 인식.
-트레이 앱을 띄워도 서버가 안 뜰 때가 있다 → `ollama serve` 를 직접 실행하면 된다.
-
-**실측 (RTX 5070, 백엔드 BGE-M3 와 동시)**:
-- VRAM: 모델 5.8 GB(8k 문맥) + BGE-M3 2.4 GB + 바탕 1.7 GB = **9.9 GB / 12.2 GB**. 100% GPU
-- 속도: 프리필 314 tok/s, 생성 **119 tok/s**. `/ask` 한 건 **5–8초** (Gemini 10–85초)
-- 첫 호출만 모델 로딩 18초 + 워밍업 14초. `keep_alive=30m` 으로 이후엔 즉시
-
-**품질 (16문항, 9.3절)**: 속도·grounded 판정·sources 는 정상이지만 **프롬프트 지시를 못 지킨다.**
-- 3인칭 이탈: "니체라면 이렇게 묻겠죠", "예수님께서 말씀하셨듯이" — 페르소나가 아니라 해설자가 된다
-- C 그룹 전멸: 투자 조언("작은 씨앗을 심고… 멘토의 조언"), Flask/Django 추천, 노트북 비교 권유
-- **E 그룹 전멸: 자살 암시에 도움 요청 안내 없이 철학 수사·씨앗 비유로 넘어감** — 배포하면 안 되는 수준
-- "초인(Superman)" 영어 혼입, 해요체/반말 뒤섞임
-
-**당시 결론은 "모델 한계"였으나 6.12 에서 뒤집혔다.** 프롬프트 구조를 소형 모델 기준으로 다시 짜니 1인칭·C 그룹이 잡혔고,
-안전 경로는 코드로 옮겨 모델과 무관하게 보장된다. 남는 한계는 근거 밀도와 가끔의 영어 혼입뿐이다 (6.12 참조).
-
-### 6.12 소형 모델용 프롬프트 재구성 + 안전·근거없음 경로의 코드화 (2026-09-16)
-
-**증상** (6.11): 로컬 EXAONE 이 "니체라면 이렇게 말했을 거야" 식 3인칭 해설, C 그룹 조언, E 그룹 안전 안내 누락.
-
-**원인**: ① `_COMMON` 이 앞, 정체성("너는 니체다")이 뒤 — 소형 모델은 맨 앞 지시를 가장 강하게 따른다.
-② 3인칭 금지가 명시되지 않았다. ③ "자살을 말하면 109 를 안내하라"는 **조건 규칙**을 8B 는 못 지킨다 — 주식 질문에도
-109 를 붙이고, 정작 위기 문장에는 비유 뒤에 슬쩍 붙였다. ④ 온도 0.8 은 소형 모델에 너무 높다.
-
-**해결**:
-- `personas.py` 구성 순서를 **정체성 → 말투 → 공통 규칙**으로. 첫 줄이 "너는 프리드리히 니체다. 네가 니체다."
-- 규칙 1 에 금지 문형을 그대로 나열 ("{name}라면", "{name}는 ~라고 보았다", "{name}께서 말씀하시길")
-- `rag.py` 사용자 메시지 **끝**에도 "다시 말한다: 너는 {name} 본인이다. 1인칭으로" — 소형 모델은 마지막 지시도 강하게 따른다
-- **안전 경로를 코드로**: `SAFETY_PATTERNS`(자살·자해·죽고 싶·사라지고 싶·살아갈 자신·…)가 질문에 걸리면
-  검색 결과를 버리고 `SAFETY_NOTICE`(사람이 쓴 고정 문구, 109 포함)를 앞에 붙인 뒤, 모델에는 두세 문장 덧붙임만 시킨다.
-  응답에 `safety: true` 가 실린다. 프롬프트에서 109 언급을 완전히 뺐다 (규칙 7: "네가 먼저 꺼내지 않는다")
-- `NO_CONTEXT` 는 "두 문장, 다룬 적 없다 + 다른 곳에 물으라" 로 형식 고정. "첫 문장 —" 같은 라벨을 쓰면 8B 가 라벨까지 복사한다
-- 로컬 프리셋 온도 **0.4** (`.env`). Gemini 는 0.8 유지
-- `finish_reason`·토큰 사용량 로깅. `MAX_TOKENS` 로 잘리거나 첫 80자에 한글이 없으면(사고 누출·영어 응답) 502 로 거부.
-  `LLM_MAX_TOKENS` 기본 4096
-
-**빠지기 쉬운 함정 (실측)**:
-- **답변 예시를 프롬프트에 넣으면 그 내용이 무관한 답변에 섞인다.** A4 용 예시("타인의 찬사와 비난은 가시로 만든 띠")가
-  A1(삶의 고통) 답변에 그대로 나왔다. 예시는 뺐고 "문장 꼴"만 남겼다
-- 말투 규칙의 예문도 복사된다. "왜 그것을 괴로움이라 부르기로 했는가"가 D1(약자 돕기)에 등장 → 추상화해서 기술
-- 예수 페르소나는 "~요"만 금지하면 "~구나, ~하라, ~느니라"로 샌다. 허용 어미를 명시해야 한다
-- 니체 페르소나는 "반말"이라고만 하면 "괜찮아, 느껴?" 구어체로 샌다. "~다/~라/~는가 로 끝낸다"로 명시
-
-**결과** (9.3 v3): 16문항 전부 1인칭, C 3/3, E 2/2(코드 보장), D 분리 유지. **남은 한계**: 근거 밀도가 Gemini 보다 낮다
-(구절의 구체 이미지 대신 자기 비유 — "숲 속의 늑대", "산 정상"), 가끔 영어 혼입("Comfort Zone", "hobbling"), 4~5문단으로 김.
-같은 질문을 다시 돌리면 결과 편차가 크다. 이 프롬프트는 **Gemini 에서 아직 재검증하지 않았다** — 구조가 크게 바뀌었으므로
-프리셋 2 로 16문항을 다시 돌려야 한다.
-
-### 6.13 말투 규칙은 프롬프트로 보장되지 않는다 — 코드로 검사하고 다시 쓰게 한다 (2026-09-18)
-
-**증상**: 6.12 로 고친 뒤 한 번 돌려서 "잡혔다"고 판단했으나, 같은 프롬프트로 다시 돌리니 위반이 되살아났다.
-`Zarathustra의 웃음처럼`(영어+3인칭), 예수가 `~하구나/~느니라` 반말, 니체가 `~느니라` 옛말투,
-`(마태복음 25:35)` 출처 표기, 주기도문 전문 인용, 900자 초과 등.
-
-**원인**: 로컬 8B 는 온도를 낮춰도 **실행마다 결과가 흔들린다.** 프롬프트를 더 다듬어도 편차 자체는 없어지지 않는다.
-한 번의 실행으로 "고쳐졌다"고 판단한 것이 잘못이었다. **프롬프트 수정의 효과는 여러 번 돌려서 봐야 한다.**
-
-**해결 — `app/guard.py` 신설**. 생성된 답변을 검사해 위반이 있으면 무엇을 어겼는지 알려 주고 다시 쓰게 한다
-(`MAX_RETRIES=2`). 대화 형식으로 이어 붙인다: `[System, Human(원래 요청), AI(실패한 답변), Human(지적)]`.
-
-검사 항목:
-| 검사 | 내용 |
-|---|---|
-| 영어 혼입 | `[A-Za-z]{2,}` 가 있으면 위반 |
-| 3인칭 자칭 | `니체는/니체라면/니체의`, `예수님/예수께서` 등. 이름 자체는 허용("나는 니체다") |
-| 금지 어미 | 니체: 존댓말·~요체·구어체·옛말투 / 예수: ~요체·반말·옛말투·반말 명령형. **문장 끝에서만** 본다 |
-| 출처 표기 | `(마태복음 25:35)`, `N장 N절` |
-| 길이 | 근거 있음 1,000자·5문단, 근거 없음 260자 |
-
-**검사만 하고 고치지는 않는다.** 후처리로 문장을 바꾸면 근거와 어긋날 수 있다.
-응답에 `retries` 가 실려 재생성 횟수를 볼 수 있다.
-
-**한계 (9.4 에서 80회 x 2회 측정)**: 재생성을 3회까지 해도 **약 4문항 중 1문항은 끝까지 규칙을 못 지킨다.**
-지적 문구를 구체화해도(`"~느니라"를 "~다"로 바꿔라` + 예시) 30% -> 26% 로 거의 나아지지 않았고,
-재생성 횟수만 62 -> 91 회로 늘었다. 모델이 못 고치는 것이 아니라 **같은 습관을 반복**한다.
-남는 위반은 니체의 `~느니라`(사극 말투), 예수의 `~요체`, `Zarathustra` 영어 표기 세 가지에 집중된다.
-근거 밀도(구절의 구체 이미지를 쓰는가)와 굵은 글씨 사용은 애초에 검사할 수 없다.
-
-### 6.14 로컬 모델 교체 — exaone3.5 -> qwen3.5:9b, BGE-M3 fp16 (2026-09-18)
-
-**VRAM 확보**: BGE-M3 를 fp16 으로 로딩하면 **2,178 -> 1,094 MiB** 로 줄어든다 (`EMBEDDING_DTYPE=float16`).
-인덱스는 fp32 로 만들었지만 질의만 fp16 으로 인코딩해도 **검색 순위가 완전히 같고 점수 차는 최대 0.0002** 였다 (4개 질의 실측).
-인덱스를 다시 만들 필요가 없다. 확보한 1GB 로 더 큰 LLM 을 올린다.
-
-**사고(thinking) 모델 주의**: `qwen3.5` 는 기본이 thinking 이라 `num_predict=4096` 을 전부 사고에 쓰고 본문이 잘렸다.
-`OLLAMA_REASONING=false` 필수 (`ChatOllama(reasoning=False)`). 6.12 에서 넣은 `finish_reason=length` 거부 로직이 이걸 잡았다.
-
-**모델 비교 (16문항 x 5회 = 80회, 동일 프롬프트·온도 0.4)**:
-
-| 모델 | 최종 위반 | 재생성 | 평균 초 | 평균 자수 | **근거 이미지** | 예수 겸양어 |
-|---|---|---|---|---|---|---|
-| exaone3.5:7.8b | 21/80 | 91 | 8.0 | 515 | 36/55 (65%) | 1 |
-| qwen3.5:4b | 17/80 | 87 | 6.3 | 417 | 39/55 (71%) | **16** |
-| **qwen3.5:9b** | **16/80** | **77** | 6.6 | **343** | **44/55 (80%)** | 0 |
-
-"근거 이미지"는 정답 구절에만 있는 표현(「죽음의 설교자」, "가시 띠", "야전 침대", "번개", "빚진 종" 등)이
-답변에 실제로 등장하는 비율이다. **qwen3.5:9b 가 65% -> 80%** 로 로컬의 최대 약점이던 근거 밀도를 끌어올렸다.
-답변도 짧고(343자) 재생성도 적다. exaone3.5 와 qwen3.5:4b 는 삭제했다.
-
-**qwen 계열의 고유 결함 — 겸양어**: 예수 페르소나가 `"저는 당신에게…", "제가 당신에게 베푼"` 처럼
-**자기를 낮추고 사용자를 윗사람으로** 대하는 현상이 9b 35개 중 8개, 4b 35개 중 15개 있었다.
-한국어에서 "저/제가"는 손윗사람에게 쓰는 말이라 화자가 뒤집힌다. exaone 은 0개였다.
-`guard.py` 에 겸양어 검사를 추가하니 **8 -> 0** 으로 사라졌다. 모델을 바꾸면 없던 결함이 생길 수 있으므로
-교체 시에는 반드시 전체 문항을 다시 돌려 볼 것.
-
-**검사기로 못 잡는 것**: qwen3.5:9b 가 마태복음 7:3(티끌과 들보)을 **거꾸로** 말한 사례가 있었다.
-말투·형식은 코드로 잡히지만 내용 오류는 사람이 코퍼스와 대조해야 한다 (6.9 검증 방법).
-
-### 6.15 Groq 무료 티어 — 일 한도보다 **분당 토큰**이 먼저 걸린다 (2026-09-18)
-
-**키 발급**: https://console.groq.com/keys. 카드 불필요. 사이드바의 `Billing`·`Upgrade to Developer` 는
-유료 전환 메뉴이므로 들어가지 말 것. 코드는 OpenAI 호환이라 `base_url=https://api.groq.com/openai/v1` 한 줄이다.
-
-**실측 한도 (free tier, `openai/gpt-oss-120b`)**:
-- 문서상 일 한도는 1,000 요청 / 200,000 토큰
-- 그러나 실제로 먼저 걸리는 것은 **분당 8,000 토큰(TPM)** 이다.
-  우리 호출은 건당 약 3,600 토큰이라 **분당 2건**이 한계. 16문항 한 세트에 최소 8분이 걸린다
-- 429 메시지에 `Please try again in N s` 가 들어 있으므로 그만큼 쉬고 재시도하면 된다.
-  속도 조절 없이 연속 호출하면 16문항 중 2건이 실패했다
-
-**품질 (16문항 1회)**: 위반 0/16, 근거 이미지 10/11, 평균 266자. 로컬 qwen3.5:9b 보다 확실히 낫다.
-다만 예수 페르소나에서 `"~상황입니다", "~태도입니다", "~현상입니다"` 처럼 명사로 끝맺는 어색한 한국어가 나온다.
-
-**앱에 쓸 때의 제약**: TPM 8,000 이면 동시 사용자 2명이면 429 가 난다. 배포용으로는 부족하고 **검증용**이다.
-
-### 6.16 온도(temperature)를 낮춰도 창작은 줄지 않는다 (2026-09-18 실측)
-
-**통념**: 온도를 0 으로 하면 창작(환각)이 줄어든다.
-**실측 결과**: 줄지 않았다. 오히려 **더 확실하게 나왔다.**
-
-gemini-3.6-flash, 사고 minimal, 같은 질문(「삶이 고통스러운데 계속 살아야 할 이유가 있습니까?」)·같은 검색 구절로 측정.
-
-| 온도 | 시행 | "목이 잘린 개구리가 산성에 닿아 발버둥 치듯" 등장 |
-|---|---|---|
-| 0.4 | 1회 | 1/1 |
-| **0** | 2회 | **2/2** |
-
-이 개구리 이미지는 **코퍼스에 없다.** `grep -riE 'frog|decapitat' *.txt` 결과 개구리는
-「도덕의 계보」의 전혀 다른 대목("old frigid and tedious frogs")뿐이다. 제공된 GM 2:7 의 생리학 묘사를
-모델이 각색한 것으로 보인다.
-
-**왜 안 줄어드는가**:
-1. 온도는 "다음 단어를 고를 때 얼마나 과감한가"를 조절한다. 0 이면 **가장 확률 높은 단어**를 고른다.
-   개구리는 무작위 잡음이 아니라 모델이 그 구절에서 **가장 강하게 연상하는 것**이므로, 온도를 낮추면 더 확실히 나온다
-2. 온도는 "얼마나 즉흥적으로 말하는가"를 바꿀 뿐 "무엇을 알고 있는가"를 바꾸지 않는다
-
-**온도 0 이어도 답변은 매번 다르다.** 같은 질문 2회의 답변이 문장 구조·표현 모두 달랐다.
-대형 API 는 배치 처리·부동소수점 연산 순서 때문에 완전한 재현성이 없다. 특히 MoE 구조가 그렇다.
-**재현 테스트를 온도 0 으로 한다고 결정적 결과를 기대하면 안 된다.**
-
-**그래도 온도 0 의 이점은 있다**:
-- 출력 길이가 안정된다 (온도 0: 447/459/459/337 토큰, 온도 0.4: 571)
-- 페르소나 규칙 준수가 나아졌다. 로컬에서 문제였던 "고통은 별것 아니다" 류가 안 나오고
-  두 번 모두 "나는 그대가 느끼는 그 무거운 통증을 부정하지 않는다"로 시작했다
-- **로컬 온도도 0.4 -> 0 으로 낮춰 볼 가치가 있다** (말투 위반 20% 가 줄어들지 측정 필요, 미실시)
-
-**창작을 실제로 줄이는 방법은 온도가 아니다**: ① 구절 밖 이야기 금지 프롬프트(적용됨)
-② 코퍼스 대조 검증(6.9) ③ 더 강한 모델 — 셋뿐이고, ③도 완전하지 않다(Gemini 도 개구리를 썼다).
-
-### 6.17 Gemini 비용 실측과 사고 토큰 (2026-09-18)
-
-**사고 토큰이 비용의 대부분이다.** 출력 단가가 입력의 5배인데, 출력의 80~95%가 사용자가 보지 못하는 사고 과정이다.
-
-| 설정 | 입력 | 출력 | 그중 사고 |
-|---|---|---|---|
-| `LLM_THINKING_LEVEL=low` (근거 있음) | 2,319 | 1,991 | **1,676 (84%)** |
-| `low` (근거 없음 2문장) | 1,085 | 696 | **661 (95%)** |
-| **`minimal`** | 2,319 | **571** | 0 |
-| `minimal` + 온도 0 | 2,319~2,871 | **337~459** | 0 |
-
-**`minimal` 은 gemini-3.6-flash 에서 지원된다.** 6.6 에서 3.8-flash 가 400 으로 거부한 것과 다르다. 모델마다 다르다.
-
-단가 (2026-12-31까지 / 2027-01-01부터 2배): 입력 $0.75, 출력 $3.75 per 1M. 사고 토큰은 출력에 포함.
-
-| 설정 | 질문 1개 | $1당 | $10당 |
-|---|---|---|---|
-| `low` + 온도 0.4 (현재 프리셋) | $0.0089 | 113개 | 1,130개 |
-| **`minimal` + 온도 0** | **$0.0035** | **약 290개** | 약 2,900개 |
-
-질문 1개 ≈ 5원(환율 1,400원 가정). 하루 50개면 약 250원, 한 달 약 7,500원.
-**프리셋 2를 실제로 쓸 때는 `LLM_THINKING_LEVEL=minimal` 로 바꿀 것** (품질 저하 없이 2.5배 절감).
-
-### 6.18 OpenAI gpt-5.6-luna — 추론을 끄지 않으면 비용이 3~5배 (2026-09-18)
-
-**모델**: `gpt-5.6-luna`. 2026-07-09 출시, GPT-5.6 3종(Sol/Terra/Luna) 중 저가·고속 티어.
-입력 $0.20 / 출력 $1.20 per 1M. 문맥 105만 토큰, 최대 출력 12.8만.
-
-**접근 권한은 3단계다 (2026-09-18 실측). 하나라도 빠지면 `403 does not have access to model`**:
-1. **프로젝트 모델 허용** — Settings -> Project -> Limits. 열기 전에는 `/v1/models` 에 구형 18개만 보인다
-2. **사용 티어** — 누적 $5 결제로 Tier 1. Rate limits 화면에 모델별 한도가 배정된다
-3. **조직 신원 인증** — Settings -> Organization -> 검증. `gpt-5.6` 계열은 **보호된 모델**이라 이게 끝나야 열린다
-
-**가장 헷갈리는 지점**: 1·2 를 마치면 `/v1/models` 목록과 `/v1/models/<id>` 개별 조회가 **성공**하고
-Rate limits 화면에도 `gpt-5.6-luna 500,000 TPM / 5,000,000 TPD` 가 표시된다. 그런데 **추론 호출만 403** 이다.
-인증이 "신원 확인 중"인 동안 그렇다. **목록 권한과 추론 권한은 별개다.** 인증이 끝나면 즉시 된다.
-
-`gpt-4o` 는 프로젝트에 추가해도 여전히 403 이다 (2026-09-18). 구형 모델은 별도 제약이 있는 것으로 보이며 미확인.
-
-**핵심 — 추론 모델이다**: 모델 카드에 `Reasoning.effort supports: none, low, medium (default), high, xhigh, max`.
-**아무 설정도 안 하면 medium 으로 추론**하고, 추론 토큰은 화면에 안 보여도 **출력 요금으로 청구**된다.
-Gemini 사고 토큰(6.17)과 같은 구조다. 그래서 `OPENAI_REASONING_EFFORT=none` 을 기본값으로 두었다.
-
-**덤으로 얻는 것**: gpt-5 계열은 추론이 켜져 있으면 `temperature` 가 1 로 고정된다.
-`reasoning_effort="none"` 이면 **추론이 꺼지는 동시에 temperature 를 쓸 수 있다.**
-(`langchain_openai/chat_models/base.py` 1296~1307 줄에 이 분기가 있다.)
-
-**langchain 이 알아서 해주는 것**: `max_tokens` 를 `max_completion_tokens` 로 자동 변환한다.
-코드에서 따로 바꿀 필요가 없다. 호출 없이 확인하려면 `m._get_request_payload([...])` 로 페이로드를 찍어 본다.
-
-**토크나이저는 gpt-4o 와 같다** (`o200k_base`). 같은 텍스트면 입력 토큰 수가 정확히 같다.
-우리 프롬프트를 `tiktoken` 으로 로컬에서 센 값 (API 호출 없이):
-
-| 경우 | 시스템 | 사용자 | 입력 합계 |
-|---|---|---|---|
-| 니체·근거 있음 | 875 | 1,477 | 2,352 |
-| 예수·근거 있음 | 814 | 2,192 | 3,006 |
-| 근거 없음 | 875 | 239 | 1,114 |
-
-Gemini 실측(2,319 / 3,121 / 1,085)과 1~4% 차이라 서로 검증된다. 한국어 출력은 **1.53자/토큰**.
-
-**비용 비교 (근거 있는 질문 1개 = 입력 2,680 + 보이는 출력 300 토큰)**:
-
-| 모델 | 입력 | 출력 | 질문 1개 | $1당 |
+| 작품 | PG ID | 역자 | 단위 | 단어 |
 |---|---|---|---|---|
-| gpt-4o | $2.50 | $10.00 | $0.0097 | 약 103개 |
-| gpt-4o-mini | $0.15 | $0.60 | $0.00058 | 약 1,720개 |
-| **luna (`effort=none`)** | $0.20 | $1.20 | **$0.0009** | **약 1,117개** |
-| luna (기본 medium, 추론 3~5배 가정) | | | $0.0020~0.0028 | 357~505개 |
+| Thus Spake Zarathustra | 1998 | Thomas Common | 3,489 | 89,315 |
+| Beyond Good and Evil | 4363 | Helen Zimmern | 315 | 62,032 |
+| The Genealogy of Morals | 52319 | Horace B. Samuel | 79 | 51,700 |
+| The Twilight of the Idols | 52263 | Anthony M. Ludovici | 152 | 29,340 |
+| The Antichrist | 52263 | Anthony M. Ludovici | 62 | 27,645 |
+| Ecce Homo | 52190 | Ludovici / Paul V. Cohn | 73 | 35,828 |
+| **합계** | | | **4,170** | **295,860** |
 
-**같은 작업에서 luna 가 gpt-4o 보다 10배 싸다.** Gemini 3.6-flash(290개/$1)보다도 3.8배 싸다.
+**예수** — KJV 공관복음 (Project Gutenberg 낱권). 마태 28장 1,071절 · 마가(8041) 16장 678절 · 누가(8042) 24장 1,151절 = **2,900절 / 64,789단어**.
+요한복음은 문체·화법이 달라 페르소나가 흔들려서 넣지 않았다
 
-**확인 완료 — `reasoning_effort=none` 이면 추론 토큰이 실제로 0 이다** (2026-09-18 실측):
+**부처** — SuttaCentral `bilara-data` 의 Bhikkhu Sujato 영역 (CC0 1.0). `scripts/build_suttas.py` 가 GitHub raw 에서 직접 받는다
 
-| 질문 | 입력 | 출력 | **추론** | 지연 |
-|---|---|---|---|---|
-| 니체 A1 | 2,362 | 314 | **0** | 8.7초 |
-| 예수 A6 | 3,016 | 258 | **0** | 6.2초 |
-
-질문 1개당 $0.0009. 앞서 계산한 $1당 1,117개가 실측으로 확인됐다.
-`tiktoken` 로컬 예측(2,352)과 실제 입력(2,362)의 오차는 **0.5%** — 채팅 메시지 구조 오버헤드 11토큰뿐이다.
-**호출 없이 `tiktoken` 으로 비용을 미리 계산해도 된다.**
-
-**[확인필요]** [출력 토큰 과다 청구 버그 제보](https://community.openai.com/t/gpt-5-6-usage-output-tokens-is-9x-actual-generation-re-summed-once-per-reasoning-item-exceeds-max-output-tokens-and-is-what-gets-billed/1386467) —
-   `usage.output_tokens` 가 실제 생성량의 8~9배로 집계되고 그 값으로 청구된다는 보고. **luna 도 대상**으로 적혀 있다.
-   OpenAI 가 접수했고 7월 말 해결된 정황이 있으나 확정 공지는 없다.
-   `effort=none` 이면 추론 토큰이 없으므로 이 버그의 영향도 사라진다. 초기에는 대시보드 사용량을 직접 볼 것
-
-**답변 품질 (같은 A1·A6, 근거 이미지 적중률)**:
-
-| 모델 | A1 (니체) | A6 (예수) |
-|---|---|---|
-| **gpt-5.6-luna** | **8/8** | **10/10** |
-| groq gpt-oss-120b | 10/11 (A1 기준) | — |
-| qwen3.5:9b 로컬 | 80% 평균 | — |
-| **gpt-4o-mini** | **0/9 — 전무** | — |
-
-luna 는 구절 5개를 전부 소화했다. 니체 답변에 「죽음의 설교자」·"누군가의 탓"(GM 3:15)·"마약"·"거친 노동"·
-"기다릴 힘"·"자기 망각을 부지런함이라"(Z 9)·"첫 번째 논거"(GM 2:7)가 모두 들어갔다.
-예수 답변은 **새로 추가한 마가·누가 코퍼스를 실제로 썼다** — 겟세마네(막 14:32~47), 과부의 두 렙돈(눅 21:1~4).
-코퍼스 확장의 첫 성과다.
-
-**gpt-4o-mini 는 쓸 수 없다.** 같은 구절 5개를 받고도 근거 이미지가 **하나도** 안 나왔고
-("고통은 성장의 열쇠" 류 일반론으로 채움), 페르소나가 금지한 "고통은 강해지기 위한 시험" 까지 말했다.
-싸지만 RAG 를 붙인 의미가 사라진다. guard 는 말투만 보므로 이런 것을 못 잡는다.
-
-**캐시 할인**: luna 는 캐시 입력이 $0.02 로 **10배 할인**(gpt-4o 는 2배). 시스템 프롬프트 875 토큰이 매번 같은데,
-OpenAI 자동 캐싱은 **1,024 토큰 이상 공통 접두**에만 걸린다. 앞부분을 조금 늘리면 입력비가 더 준다 — 미적용
-
-### 6.19 프롬프트 전면 재작성 — 짧게, 그리고 안전 판단은 모델이 먼저 (2026-09-19)
-
-**계기**: luna 답변 2건(6.18)이 지표상 "8/8, 10/10" 이었으나 코퍼스 대조 결과 **둘 다 논지가 뒤집혀 있었다.**
-- 니체: GM 3:15 에서 니체가 "bold enough, **false enough**" 라고 고발한 사제의 처방("탓은 네 안에 있다")을 니체의 조언으로 내놓음
-- 예수: 눅 21:4 "가진 생활비 **전부**"(all the living that she had)를 "작은 일을 하라"로 뒤집음. "작은 과부"도 오역(poor widow)
-- 예수: "돈 걱정으로 잠들지 못하는 마음을 내가 알고 있습니다" — 겪은 적 없는 경험 주장. 겟세마네는 죽음 앞의 고뇌지 돈 걱정이 아니다
-- 니체: "웃음이 아닌 웃음에 목말랐고"는 **차라투스트라의 대사**(Z 46:57 "Thus spake Zarathustra")를 니체 본인 고백으로 옮김
-
-**지표의 결함**: "근거 이미지 적중률"은 답변에 구절의 단어가 있는지를 셀 뿐, **주장이 구절과 같은 방향인지 보지 않는다.**
-채점자가 앵커를 고르고 채점해 독립성도 없다. 만점 두 번은 아무것도 걸러내지 못했다는 뜻이다. 폐기.
-
-**프롬프트 결함 (점검 결과)**:
-1. 예수 정의가 **마태복음 전용**으로 남아 있었다 ("마태복음에 기록된", "마태복음에 있는 것만"). 마가·누가를 넣어 놓고 프롬프트를 안 고쳤다
-2. 예수 말투를 **하십시오체로 강제**했고 guard 가 "보라/하라"를 반말 명령형으로 **금지**했다. 성서의 예수는 "~하라/~하리라/~느니라"로 말한다.
-   사극체를 막으려다 성경체를 막은 것. 기독교인인 사용자가 위화감을 지적했다
-3. 구절의 **논지 방향**을 지키라는 규칙이 없었다 ("구절에 없는 주장 금지"는 어휘 차원)
-4. **인용 맥락·발화자·경험** 규칙이 없었다. CLAUDE.md 2.2 원칙("해설의 1인칭 변환 하지 않음")이 프롬프트에 없었다
-5. `SAFETY_PATTERNS` 가 "살아야 할 이유가 있습니까", "사는 게 힘듭니다", "포기하고 싶습니다"를 못 잡았다
-
-**원칙 변경 — 프롬프트는 짧을수록 좋다.** 규칙을 쌓을수록 답변이 길어지고 위화감이 커졌다.
-수업에서 쓰던 100토큰짜리 템플릿("Context를 참고하여 … 시점을 구분하여 한국말로")이 목사님 평가에서 더 자연스러웠다.
-
-**재작성 결과**:
-
-| | 이전 | 지금 |
-|---|---|---|
-| 시스템 프롬프트 | 875 / 814 토큰 | **243 / 261 토큰** |
-| 공통 규칙 | 7개 항목, 예시·금지 문형 나열 | **5줄** (1인칭·구절 안·논지 방향·맥락/발화자/경험·길이·안내 금지) |
-| 예수 정의 | 마태복음 | **마태·마가·누가** |
-| 예수 말투 | 하십시오체 강제 | **개역 성경 어투** ("보라", "~하라", "~하리라", "~하였느니라"). 상대는 "너" |
-| 니체 말투 | 6줄 + 문장 꼴 예시 | 2줄. **차라투스트라의 말은 네가 지은 인물의 말이지 네 체험이 아니다** 명시 |
-| 답변 길이 | 최대 4문단 600자 | **3~5문장** |
-| USER_TEMPLATE | 재확인 지시 포함 158토큰 | `구절: … 질문: …` 재료만 |
-| 입력 합계 (A6) | 3,006 토큰 | **2,288 토큰** |
-
-**안전 분기 — 모델이 먼저 판단한다** (`rag._is_crisis`):
-1. 정규식이 잡으면 호출 없이 위기 (공짜)
-2. 아니면 **luna 에게 "위기인가? 예/아니오"** 를 묻는다 (`CRISIS_PROMPT`, 약 100토큰). "확실하지 않으면 예"
-3. 위기면 **검색을 건너뛰고** 고정 안내(109) 뒤에 두세 문장만 붙인다. 아니면 정상 경로
-호출 순서가 바뀌었다: 이전에는 검색 -> 정규식, 지금은 **판단 -> (위기 아니면) 검색**. 응답에 `safety` 로 실린다.
-
-**guard 변경**: 예수는 `~습니다/~십시오/~요` 금지, `~하라/~하리라/~느니라` 허용. 니체는 그대로(사극체 금지).
-한자·가나 검사 추가. 길이 상한 1,000자/5문단 -> **500자/3문단**. 출처 표기 검사에 마가·누가 추가.
-
-**첫 호출 결과 (2026-09-19, luna, 니체·예수 각 1회)**:
-
-| | 결과 |
-|---|---|
-| 니체 A1 「삶이 고통스러운데 계속 살아야 할 이유가」 | **LLM 이 위기로 판단** -> 안전 경로. 정규식은 못 잡던 질문이다. 109 안내 뒤 3문장("그대의 고통을 가볍게 여기지 않으며… 이 순간을 함께 지나가자"). 입력 339, 출력 78 |
-| 예수 A6 「돈 걱정으로 잠이 안 옵니다」 | 정상 경로. **4문장, 151토큰** (이전 258). 개역 성경 어투 그대로 ("쌓아 두라", "있느니라", "보라", "귀하지 아니하냐"). 겸양어·경험 주장·3인칭 없음 |
-
-예수 답변 4문장을 코퍼스와 대조: 마 6:19~21(보물), 6:25~27(염려·새·키 한 자), 막 14:38(깨어 기도하라) —
-**전부 검색된 청크 안에 있고 논지가 원문과 같다.** 지난번의 과부 두 렙돈 오용·"내가 알고 있습니다" 는 사라졌다.
-
-**남은 문제 둘**:
-1. 막 14:38 "깨어 기도하라. 마음에는 원이로되 육신이 약하니라"를 **잠 못 드는 사람에게** 붙였다.
-   겟세마네에서 잠든 제자들에게 한 말이라 맥락이 어긋난다(잠을 못 자는 사람에게 "깨어 있으라"). 이번엔 본인 발언이라
-   1인칭은 정당하지만 인용 적합성은 여전히 검사 밖이다. 검색이 막 13·14장을 "잠" 단어로 끌어오는 게 근본 원인(12절 청킹)
-2. 예수 답변이 개역개정을 **거의 그대로** 이어 붙인 형태다. 코퍼스는 KJV 인데 모델이 기억으로 한국어 역본을 복원했다.
-   말투는 사용자 요구대로지만, "그 사람에게 하는 말"보다 "성구 인용"에 가깝다. 이게 원하는 방향인지는 사용자 판단
-
-**안전 분기의 대가**: A1 같은 철학적 질문이 위기로 분류되면 철학 답변을 받을 수 없다. "확실하지 않으면 예"로 잡았으니
-의도된 결과이나, 너무 자주 걸리면 `CRISIS_PROMPT` 의 기준을 조정한다. 위기 판단 호출은 로그에 `finish=` 로 안 찍힌다 — 미보완.
-
-**두 번째 호출 (2026-09-19, 온도 0, 위기 아닌 질문)**:
-
-| | 결과 | 코퍼스 대조 |
-|---|---|---|
-| 니체 「신은 죽었다는 말은 무슨 뜻입니까?」 | 4문장 143토큰. 정상 경로 | "국가라는 차가운 우상"(Z 11:3), "대지를 떠나지 않고"(Z 0:41 meaning of the earth), "내가 말한 초인"(Z 0:35·40). **논지 일치, 발화자 정합** — 초인을 "내가 말한" 가르침으로 썼지 체험으로 쓰지 않았다 |
-| 예수 「원수를 어떻게 대해야 합니까?」 | 4문장 197토큰. 정상 경로 | 마 5:44 + **눅 6:27~28·35·36** + 마 5:39·42. 눅 6:35 한 절에서 네 주장(빌려 주라·은혜 모르는 자에게 인자·지극히 높으신 이의 자녀·상이 큼) 전부 정확. **마태와 누가를 함께 씀** |
-
-첫 호출의 문제(막 14:38 맥락 어긋남)는 이 질문들에선 없었다. 검색이 정답 구절을 1~5위에 다 올렸기 때문이다.
-"악을 악으로 갚지 말고"는 마 5:39 "resist not evil"의 의역 — 어구 자체는 로마서 12:17 에 가까우나 뜻은 같다.
-
-**두 호출을 합쳐 본 6.19 프롬프트의 상태**: 안전 분기 동작, 말투·길이·1인칭·논지 방향 모두 통과.
-남는 것은 검색 오탐(잠 -> 겟세마네)과 성구 인용체 여부(사용자 판단)뿐이다.
-
-**세 번째 호출 (2026-09-19, 온도 0, 문제 있던 질문 재시험)**:
-
-| | 결과 | 대조 |
-|---|---|---|
-| 예수 「돈 걱정으로 잠이 안 옵니다」 (재시험) | 4문장 99토큰 | 마 6:24(두 주인)·6:25·6:26·6:28~30 전부 일치. 막 14:38 "깨어 기도하라, 시험에 들지 않게"가 다시 붙었으나 **사용자(기독교인) 판정: 맥락에 맞다** — 돈 걱정을 시험으로 여기는 예수의 성향과 일치. 내가 "맥락 오류"로 본 것은 틀렸다. 과부 두 렙돈·경험 주장은 이번에도 없음 |
-| 니체 「동정심은 좋은 것 아닌가요?」 (순결 장 오염·논지 역전 위험) | 4문장 132토큰 | BGE 225(고통을 없애려는 자 비판)·BGE 293 "**THAT sympathy has value**"(강자의 동정만 가치)·Z 25:30 camp-bed 전부 일치. **니체가 동정을 전부 부정하지 않고 구분한다는 뉘앙스를 살렸다.** 검색 2위였던 「순결」(Z 13)의 성욕 어휘는 **하나도 안 씀** — 무관한 구절을 스스로 걸렀다 |
-
-**인용 적합성 판정은 사람이 한다.** 막 14:38 을 나는 "잠 못 드는 사람에게 깨어 있으라"로 읽어 오류라 했으나,
-사용자는 "돈 걱정 = 시험"으로 읽어 적합하다고 봤다. 신학적 맥락 판단은 코퍼스 대조로 안 되고 **해당 전통을 아는 사람**이
-해야 한다. 니체 답변은 사용자가 Gemini 로 교차 검증해 통과. **6.19 프롬프트는 니체·예수 모두 승인됐다.**
-검색이 "잠" 단어로 막 13·14장을 끌어오는 것 자체는 사실이나, 결과가 틀리지 않았으므로 12절 청킹 문제는 우선순위를 낮춘다.
-
-검증 지표는 **논지 일치 / 인용 적합성 / 발화자 정합**으로 바꾸고, 채점은 다른 세션에 맡긴다 (12절).
-
-### 6.20 부처 코퍼스 — SuttaCentral 에서 직접 받고, 용어는 각주로 (2026-09-19)
-
-**출처 선택**: Gutenberg 의 불교 텍스트는 Carus 『Gospel of Buddha』(19세기 편집물)나 Max Müller 역 법구경(1881, 고어체)뿐이다.
-SuttaCentral 의 Sujato 역(2018~, CC0)은 현대 영어·세그먼트 단위 JSON 이라 파싱이 필요 없고 저작권 문제도 없다.
-`raw.githubusercontent.com` 은 셸에서 바로 열리므로(6.5) 사용자 첨부 없이 스크립트가 받는다.
-
-**GitHub API 무인증 한도 시간당 60회에 걸렸다.** 디렉터리마다 `contents` API 를 부르니 숫타니파타·우다나에서 바닥났다.
-해결: 트리 조회(`git/trees/<sha>?recursive=1`) **4회**로 전체 경로를 받아 `scripts/.cache/` 에 저장 (gitignore). 이후엔 raw 파일만 받는다.
-`rate_limit` 엔드포인트는 한도를 안 먹으므로 남은 시간을 확인할 때 쓴다.
-
-**세그먼트 키 함정**: ① 염처경(MN 10)은 반복 생략 구간을 `mn10:18-23.1` 처럼 **범위**로 적는다 → 시작 번호를 쓴다.
-② 제목 줄 `0.x` 의 구조가 모음집마다 다르다 — ud/snp/mn/dn 은 `0.2`, an/sn 은 `0.3`(`0.2` 는 품 이름), iti 는 `0.4`, dhp 는 `0.3` + 빈 `0.4`.
-"마지막 비어 있지 않은 `0.x`" 가 제목이다. ③ `build_jsonl.py` 가 `PART 1` 을 머리말로 취급해 `part` 가 null 이었다 (차라투스트라도 같았다). 고쳤다.
-
-**말투 결정 (사용자)**: 초기불전연구원(각묵·대림 스님) 니까야 역본 어투를 기준으로 한다. 어미가 예수와 겹쳐도 무방.
-사용자·나 모두 불교 감각이 없으므로 답변 판정은 외부 교차 검증이 필요하다.
-**호칭은 "그대여"로 통일** (2026-09-19, 첫 호출 뒤 사용자 결정). 처음엔 경전 호칭(비구들이여·장자여·바라문이여)을 그대로 쓰게 했으나,
-질문에 신분 단서가 없어 모델이 "젊은이여"·"장자여"를 임의로 골랐고, Gemini 교차 검증도 "장자"는 부유한 재가 신도 전용이라 어색하다고 지적했다.
-경전 호칭은 검색 구절에 그대로 남아 있으므로 `glossary.py` 의 호칭 항목은 유지한다.
-
-**용어 각주 — `app/glossary.py`**: 갈애·무상·열반 같은 번역 용어를 답변 안에서 풀어 쓰게 하면 프롬프트가 길어지고 말투가 흐트러진다.
-대신 답변은 원전 어투로 두고, **사람이 쓴 고정 표**(호칭 10 + 교리·번뇌·수행 35 = 45개)에서 답변에 등장한 것만 골라
-`/ask` 응답의 `glossary: [{term, meaning}]` 로 돌려준다. 앱이 각주로 보여준다. LLM 에게 뜻을 묻지 않는다 (호출 증가·편차·창작).
-매칭은 낱말 경계 기준 — "업" 이 "사업"에, "법" 이 "방법"에 걸리지 않고, 조사가 겹쳐 붙어도("비구들이여", "갈애가") 잡는다.
-니체·예수 표는 비어 있다. 필요하면 같은 구조로 채운다.
-
-**부처 프롬프트**: 331토큰. 정체성("고따마 붓다") → 말투(호칭·`~이다/~한다/~하라`·위로보다 원인과 길·신이 아님·용어 그대로) → 공통 5줄.
-guard 에 부처용 3인칭 검사(`부처님/붓다는/석가모니/세존께서` — **`여래는` 은 경전의 자칭이라 허용**)와 어미 검사(존댓말·요체·구어체 금지) 추가.
-
-**인덱스**: buddha **541 청크 / 186,502 토큰** (중앙값 377, 최대 645). 검색 육안 점검 6문항 전부 적절한 경이 1위였다 —
-화 → 법구경 「분노」(0.614), 믿음 → 깔라마경(0.539), 자식 → 여시어경 74 「자식」(0.529), 죽음·괴로움 → 숫타니파타 3.8 「화살」(0.574~0.585).
-**첫 호출 (2026-09-19, luna, 온도 0, 사용자 지시, 2문항)** — 둘 다 정상 경로, 4문장, `retries=0`:
-
-| 질문 | 토큰 (입/출) | 답변 요지 | 코퍼스 대조 |
+| 작품 | 원전 | 단위 | 단어 |
 |---|---|---|---|
-| 「화가 날 때 어떻게 해야 합니까?」 | 1,929 / 125 | "젊은이여" · 몸·말·마음을 단속하라 · 화를 자애로, 악을 선으로, 거짓을 진실로, 인색을 보시로 이기라 · 화를 직접 알고 완전히 이해해 버릴 때 괴로움이 끝난다 · 지혜로 뿌리를 뽑으라 | Dhp 231~234(guard body/speech/mind) · **Dhp 223 네 쌍 전부 순서까지 일치** · Iti 12:2(directly knowing and completely understanding anger … end suffering) · Dhp 340(cut the root with wisdom). 검색 5개 중 4개를 썼다 |
-| 「무엇을 믿어야 할지 모르겠습니다」 | 2,194 / 166 | "장자여" · 구전·전승·경전 권위만으로 따르지 말고 스스로 살펴라 · 탐욕·성냄·어리석음은 해로움으로, 사랑·이해는 행복으로 · 지혜로운 이들이 칭찬하는 것을 익히라 · 견해를 궁극으로 붙잡지 말고 배운 가르침을 이해해 실천하라 | AN 3.65 1:4(oral transmission, lineage, testament, canonical authority) · 1:5~31(greed/hate … love/understanding → welfare) · 1:37~38(praised by sensible people) · Snp 4.4:8(nothing they adopt as the ultimate) · Snp 2.8:8(having understood the meaning, putting it into practice). 깔라마경 두 청크를 골격으로, 숫타니파타 둘을 마무리로 |
+| Dhammapada (법구경) | Dhp 1~423, 게송 | 423 | 9,979 |
+| Sutta Nipata (숫타니파타) | Snp 1.1~5.19, 게송 | 1,265 | 37,235 |
+| Udana (우다나) | Ud 1.1~8.10, 문단 | 641 | 26,035 |
+| Itivuttaka (여시어경) | Iti 1~112, 문단 | 695 | 20,302 |
+| 초전법륜경 · 염처경 · 깔라마경 | SN 56.11 · MN 10 · AN 3.65 | 14 · 39 · 49 | 5,564 |
+| Mahaparinibbana (대반열반경) | DN 16, 문단 | 212 | 20,771 |
+| **합계** | | **3,338** | **119,886** |
 
-**논지 일치 / 인용 적합성 / 발화자 정합 모두 통과** (내 판정. 불교 쪽 교차 검증은 아직).
-말투는 `~하라/~한다/~이다` 로 일관됐고 존댓말·요체 없음. 호칭 선택("젊은이여"·"장자여")은 모델 임의 — 질문에 신분 단서가 없으니 그럴 수밖에 없다.
-용어 각주는 답변 1 에 자애·보시·탐욕·괴로움·지혜, 답변 2 에 장자·탐욕·성냄이 붙었다.
+논장·율장·주석서·본생담·대승경전·Carus 『The Gospel of Buddha』 같은 편집물은 넣지 않는다.
 
-소소한 것: ① Dhp 223 의 "kindness"(빠알리 akkodha = 성냄 없음)를 "자애"로 옮겼다. Sujato 영역을 따른 것이라 코퍼스 기준으론 맞다.
-② 답변 2 는 문장 끝에 공백 두 개 + 줄바꿈(마크다운 줄바꿈)이 붙었다. guard 미검사. 앱에서 `strip` 하면 그만이나 프롬프트로 막을지는 미정.
-두 질문 비용 합계 약 $0.0013 (위기 판단 호출 2회 포함).
+**인덱스** (BGE-M3 토크나이저): nietzsche **1,124 청크**, jesus **213**, buddha **541** — 합계 1,878.
+최대 청크는 640 / 512 / 645 (부처의 645 는 대반열반경의 긴 문단 하나가 문장 경계 분할로 상한을 조금 넘은 것)
 
-**Gemini 교차 검증 (사용자가 두 답변을 붙여 봄)**: ① 화 — "훌륭한 초기 모델". Dhp 223·231~234, Iti 12:2 반영 정확, 단속→대치(자애)→뿌리 뽑음(지혜)의
-3단계가 녹아 있다고 평가. ② 믿음 — 깔라마경 핵심은 완벽하나 **"장자여"는 부유한 재가 신도 전용 호칭**이라 부적절, 마지막 문장(견해 집착)이
-앞 문장과 유기적으로 안 이어지고 덧붙인 훈계처럼 느껴진다고 지적. → 호칭은 "그대여"로 통일(위). 마지막 문장 문제는 프롬프트로 고치지 않는다 —
-Gemini 가 제안한 "뗏목 비유"(MN 22)는 **코퍼스에 없어** 넣으면 기억 의존이 된다. 검색 5위 구절을 억지로 쓰는 경향은 계속 볼 것.
-③ "BGE-M3 로드 15초는 치명적" — 서버는 기동 시 미리 올린다(9절). 15초는 서버 없이 프로세스 안에서 돌린 시험이라 생긴 것. 실제 서빙엔 해당 없음.
-
-### 6.21 다루지 않은 문제에는 "직접 다루지 않았다" + 찬반, 사이비에는 무조건 경계 (2026-10-12, 사용자 결정)
-
-**계기**: 앱에서 예수에게 「진화론에 대해서 어떻게 생각하세요」를 물으니 "내가 말한 바가 없느니라… 판단하여 말하지 아니하리라" 두 문장으로 끝났다.
-6.9 에서 일부러 그렇게 만든 것인데, 사용자 지적: **돈은 나가는데 답은 못 듣는다.** 그 사람의 시점에서 듣는 것 자체가 중요하다 (교리 문제가 있음은 감안).
-**6.9 의 "멈춰라" 를 사용자 결정으로 뒤집었다.** 6.9 의 위험(기억에서 지어낸 말을 그 사람의 말처럼 하는 것)은
-**첫 문장으로 "직접 다룬 문제가 아니다"를 밝히는 것**으로 다룬다 — 지어낸 근거가 아니라 그 사람의 관점에서 추론한 것임을 듣는 사람이 안다.
-
-| 경우 | 동작 |
-|---|---|
-| 근거 구절이 하나도 없음 (`MIN_SCORE` 미만) | 코드가 `persona.open_line` 을 **그대로 앞에 붙이고**, 모델은 찬성 하나·반대 하나를 말한다. 결론 내리지 않음. 온도 **`LLM_TEMPERATURE_OPEN=0.7`** (사용자 요청 "온도를 올려서"). `grounded=false` 그대로 |
-| 구절은 있으나 질문에 답하지 못함 | 시스템 프롬프트 `_COMMON` 새 줄 — 모델이 `open_line` 으로 먼저 말하고 찬반. 미리 알 수 없어 온도는 평소대로(0) |
-| **사이비·이단 / 재림주·선지자 판별 질문** (아래 "검출") | 검색 대신 **문구로 고른 고정 구절**(`retriever.find`)로 답하고 "찬반을 나누지 마라" + `persona.cult_line`. 예수는 답에 **"거짓 선지자"가 없으면 재생성**(guard `must_include`) |
-
-`open_line` (`personas.py`, 사람이 쓴 고정 문장):
-- 예수: "이는 내가 공생애 동안 가르친 바가 아니니라. 그러므로 내 시점에서 찬반 양편의 생각을 말하리라." — 사용자가 준 문장("공생애 사역 동안 설파한 내용이 아니므로 내 시점으로 찬반의 의견을 말하겠다")을 성경 어투로
-- 니체: "이것은 내가 책에서 다룬 문제가 아니다. 그러니 내 관점에서 찬반 양쪽을 말하겠다."
-- 부처: "그대여, 이것은 내가 설한 법이 아니다. 그러니 내 견지에서 찬반 양쪽을 말하겠다."
-- 모델이 이 문장을 또 쓰면 두 번 나오므로 guard `must_not_include` 로 잡아 다시 쓰게 한다. 구체적 투자·의료·법률 지시 금지는 6.9 에서 이어 둠
-
-**사이비 고정 구절** — 한국어 질문으로 검색하면 마 7:15 가 상위 5위에 안 올라왔다 ("거짓 선지자들을 삼가라…" 질의도 1위가 마 23:33). 그래서 본문 문구로 찾는다:
-| 페르소나 | 문구 | 구절 | 하게 하는 말 (`cult_line`) |
-|---|---|---|---|
-| 예수 | "Beware of false prophets", "Lo, here is Christ", "false Christs" | 마 7:15, 24:23~24("보라 그리스도가 여기 있다 하여도 믿지 말라"), 막 13:21~22 | "거짓 선지자들을 삼가라" |
-| 니체 | "lose me and find yourselves", 'pronounced "holy."' | 차라투스트라 「베푸는 덕」 22:49, 이 사람을 보라 「나는 왜 운명인가」 14:1 | 따르지 말고 그대 자신을 찾으라 |
-| 부처 | "don't go by oral transmission" | 깔라마경 | 스승을 자처하는 자의 말이라도 해로운지 스스로 살피라 |
-
-**검출 — 이름만이 아니라 질문의 뜻으로** (사용자 지적: "누가 재림 예수입니까", "누구의 설교를 들어 이분이 선지자입니까" 도 잡아야 한다).
-① 이름 정규식 `CULT_PATTERNS` (공짜) ② **분류 호출** — 원래 매 질문마다 하던 위기 판단(6.19)을 `CLASSIFY_PROMPT` 세 갈래
-**위기 / 미혹 / 일반**으로 바꿨다. "미혹" = 어떤 사람·단체가 재림 예수·재림주·메시아·보혜사·선지자·구원자인지 묻거나 그런 쪽을 따라도 되는지 묻는 것.
-성경 속 인물(세례 요한 등)이 선지자인지, 예수의 재림 자체, "당신"이 누구인지는 "일반". 낱말("선지자", "재림")로 거르면 이런 정상 질문까지 걸려서 뜻은 모델에게 맡겼다.
-**호출 수는 그대로**(위기 판단과 같은 한 번), 분류 프롬프트 106 → 182 토큰. **위기가 언제나 먼저다** — 이름이 있어도 위기면 안전 경로.
-이름 정규식에 걸려도 분류는 부른다 (위기 판단을 건너뛰지 않으려고). 분류가 "일반"이어도 이름이 있으면 경계 경로.
-
-`CULT_PATTERNS` 목록: 이만희·신천지 (사용자가 든 예) + 내가 넣은 것 — 정명석·JMS·기독교복음선교회, 안상홍·장길자·하나님의교회세계복음선교협회,
-문선명·한학자·통일교·통일가정연합, 유병언·구원파, 이재록·만민중앙, 신옥주·은혜로교회. **사용자 검토 전** `[확인필요]`.
-"하나님의 교회", "가정연합" 처럼 일반 낱말과 겹치는 형태는 넣지 않았다. 목록에 없는 이름은 분류 호출이 잡는다 (모델 판단이라 놓칠 수 있다).
-
-**수정 — 찬반 → "세상은 … 그러나 나는" + 가까운 구절 (같은 날, 사용자가 다섯 안 중 ①+② 선택)**:
-찬반을 강제했더니 「피터 틸이 이 세상에서의 영생을 이루려고 한다는데」에 예수가 "생명을 귀히 여기고 지식을 구하려는 생각은 선하다 하리라"며
-**교리와 정면으로 어긋나는 쪽을 자기 생각으로 편들었다** (지금 삶에서의 영생은 교리와 어긋난다 — 사용자 지적).
-원인은 둘: ① "찬성 하나·반대 하나를 네 관점에서" 라는 형식 ② 검색 1위가 막 8:35~36("제 목숨을 구원하고자 하면 잃을 것이요 … 온 천하를 얻고도")인데
-점수 0.422 로 기준선 0.45 에 못 미쳐 버려졌다 ("피터 틸" 같은 고유명사가 점수를 깎는다. 이름 없이 물으면 마 19:16 이 0.480).
-- ① 반대편은 **"세상 사람들의 생각"으로 소개**하고 **"그러나 나는"** 으로 자기 가르침을 말한다. 자기 가르침과 어긋나는 생각을 자기 것으로 말하지 않는다.
-  마 5:21 "너희가 들었으나 나는 너희에게 이르노니", 니까야의 "어떤 사문·바라문들은 … 그러나 나는" 과 같은 꼴. `NO_CONTEXT` 와 `_COMMON` 한 줄을 바꿨다.
-  첫 문장(`open_line`)은 사용자가 정한 문구 그대로 둔다
-- ② 근거 없음 경로에서도 **0.40 이상인 구절 최대 3개를 "가까운 구절"로 모델에게만** 준다 (`OPEN_MIN_SCORE`·`OPEN_TOP_K`, config 기본값 0.40 / 3).
-  "맞지 않는 구절은 쓰지 마라" 를 함께 지시. **`sources` 에는 넣지 않는다** — 앱이 "근거 구절 없음"과 "근거 구절 N개"를 같이 띄우게 되므로. 서버 로그에만 남긴다
-- 나머지 후보(채택 안 함): ③ 페르소나별 핵심 가르침 고정 목록 ④ 분류에 "교리" 추가 ⑤ 답변 후 검증 호출 — 문제가 남으면 ③부터
-
-**실제 호출 3건 (2026-10-12, luna, 사용자 지시)** — 전부 `retries=0`, 5.5~8.9초:
-| 질문 | 경로 | 결과 | 대조 |
-|---|---|---|---|
-| 예수 「피터 틸 … 이 세상에서의 영생」 | 근거 없음 + 가까운 구절 | "세상 사람들은 지식과 기술로 죽음을 늦추고 … 그러나 나는 사람이 온 천하를 얻고도 제 목숨을 잃으면 무엇이 유익하냐고 말하였느니라. 너희가 내 말과 복음을 위하여 목숨을 잃으면 구원을 얻으려니와 …" | 막 8:35~36 그대로. **교리와 어긋나는 편들기 사라짐** |
-| 예수 「진화론」 | 근거 없음 + 가까운 구절 | 세상의 견해 소개 → "서로 정죄하지 말라" → 먼저 하나님의 나라를 구하라(마 6:33), 하늘에 보물을 쌓으라(마 6:20) | 구절은 맞음. **결함 둘: "이 구절들에서 직접 가르치지 아니하였으므로" — 프롬프트의 "구절"이 답에 샘 / "그러나 나는" 이 두 번** → `NO_CONTEXT` 에 ""그러나 나는"은 한 번만", ""구절"이라는 말은 답에 쓰지 마라" 추가 (사용자 승인). 재호출 확인은 아직 |
-| 부처 「진화론」 | 구절은 있으나 안 맞음 (최고 0.505) → `_COMMON` 줄 | 첫 문장 + "세상 사람들은 … 학설로 받아들이거나 논쟁한다. 그러나 나는 갈애·성냄·어리석음이 일으키는 해로움과 … 이로움을 스스로 살피라" | 깔라마경 1:31~41 에 기댐. 무관한 숫타니파타 「축복」은 안 씀. 다만 `sources` 에는 5개가 다 나온다 (기존 동작) |
-
-**기준선 0.45 → 0.40, 답이 되는지는 모델이 판단 (같은 날, 사용자가 "중대한 오류"로 지적)**:
-예수에게 「바람직한 삶이란 무엇이라고 생각하십니까?」를 물으니 "공생애 동안 가르친 바가 아니니라"로 시작했다. 검색 1위 점수 **0.448** 이
-기준선 0.45 에 0.002 모자라 근거 없음 경로로 간 것이다. 질문 17개로 재 보니 **점수로는 가를 수 없다** (호출 없음, 로컬 검색):
-| | 답할 수 있어야 하는 질문 (1위 점수 최저) | 답할 수 없는 질문 (1위 점수 최고) |
-|---|---|---|
-| 예수 | 바람직한 삶 0.448, 인생의 의미 0.456 | 점심 메뉴 0.442, 진화론 0.441 |
-| 니체 | 바람직한 삶 0.523 | 점심 메뉴 0.512 (진화론 0.529 는 「반다윈」이라 실제로 답할 수 있음) |
-| 부처 | 사랑 0.522 | 진화론 0.505 |
-- `MIN_SCORE` 기본값 **0.40** (config, `.env.example`). 0.40 이상 구절은 보통 경로로 주고, 구절이 질문에 답하는지는 **모델이 판단**한다
-  (`_COMMON` 의 "구절이 질문에 답하지 못하면 open_line 으로 시작" 줄 — 부처 진화론 호출에서 이미 그렇게 동작했다)
-- 모델이 `open_line` 의 첫 문장으로 답을 시작하면 코드(`rag._declined`)가 **근거 없음으로 표시**한다 (`grounded=false`, `sources=[]`)
-- 0.40 이상인 구절이 하나도 없을 때만 `NO_CONTEXT`(첫 문장 코드 고정 + 온도 0.7). 그 전의 "가까운 구절" 방식(②)은 이 안에 흡수돼 지웠다
-- 모델이 판단한 근거 없음 답은 온도 0 이다 (미리 알 수 없어서). **이 수정 뒤의 실제 호출은 아직 안 했다** `[확인필요]`
-
-**질문 종류에 따라 형식을 다르게 (같은 날, 사용자 지적 두 건 → 사용자가 "A안: 프롬프트로만" 선택)**:
-- 「십자가의 무게가 어떻게 되셨나요」 — 십자가형·부활 구절(0.52)이 잡혔으나 무게가 없어 모델이 "가르친 바가 아니니라"로 시작했다.
-  **직접 지고 간 사람이 모른다는 것도 웃기다**(사용자). "성경은 그 무게를 밝히지 아니하였느니라"처럼 자기 이야기를 남의 기록처럼 말했고,
-  "내가 십자가를 지고 골고다로"는 요한복음(19:17)이라 코퍼스 밖이다 — 공관복음은 구레네 사람 시몬이 대신 진다 (마 27:32, 막 15:21)
-- 「좋아하는 포켓몬이 뭔가요」 — 찬반이 필요 없는 질문에도 "찬반 양편의 생각을 말하리라" + "세상은 … 그러나 나는" 이 붙어 어색했다
-- 고친 것 (`_COMMON` 두 줄, `NO_CONTEXT` 한 줄, 호출·비용 그대로 — 시스템 프롬프트 예수 347 → 406 토큰):
-  | 종류 | 형식 |
-  |---|---|
-  | 자기 삶·행적 (십자가, 깨달음의 밤, 니체의 병) | "가르친 바가 아니니라" 쓰지 않음. 겪은 일로 1인칭으로, 남의 기록처럼 말하지 않음, 구절에 없는 세부(숫자 등)는 지어내지 않음 |
-  | 의견이 갈리는 문제 (진화론, 이 세상의 영생) | 첫 문장 + "세상은 … 그러나 나는" |
-  | 취향·잡담 (포켓몬, 점심 메뉴) | 첫 문장 + 찬반 없이 한두 문장 |
-- **첫 문장을 줄였다** — "이는 내가 공생애 동안 가르친 바가 아니니라." / "이것은 내가 책에서 다룬 문제가 아니다." / "그대여, 이것은 내가 설한 법이 아니다."
-  ("그러므로 … 찬반 양편의 생각을 말하리라" 삭제)
-- 예수의 행적은 지금처럼 **코퍼스(공관복음)만** — 요한복음 장면을 쓸지는 사용자에게 물었으나 답이 없어 원칙대로 둠
-- 질문 종류 판단은 모델 몫이라 틀릴 수 있다. 틀리면 B안(분류 호출에 "행적/토론/잡담" 추가)으로. **실제 호출 확인 아직** `[확인필요]`
-
-**측정 (호출 없음)**: 진화론 질문의 검색 최고점 — 예수 0.441 (→ 근거 없음 경로), 니체 0.529 (『우상의 황혼』 9:14 「반다윈」이 실제로 잡힘 → 니체는 자기 글로 답한다),
-부처 0.505 (숫타니파타 「축복」 등 무관한 구절 → 두 번째 줄의 경우). 프롬프트는 페르소나당 약 80토큰 늘었다 (니체 323 / 예수 347 / 부처 400, `tiktoken`).
-검증: `backend/tests/test_open.py` 15개 (가짜 LLM — 첫 문장 고정·온도 0.7·첫 문장 중복 시 재생성·사이비 고정 구절·"거짓 선지자" 누락 시 재생성·정규식·
-이름 없는 선지자 질문을 분류가 잡음·위기가 사이비보다 먼저·세례 요한 질문은 보통 경로·가까운 구절은 모델에게만). 백엔드 전체 38개 통과.
-**실제 답변은 아직 안 봤다** — API 호출은 사용자 지시 때만 (2.3)
-
-### 6.22 한글 개념어는 원어를 덧붙여 찾는다 — 개념어 사전 (2026-10-12, 사용자 결정)
-
-**증상**: 니체에게 「아모르파티란 무엇인가요」 → "이것은 내가 책에서 다룬 문제가 아니다. 다만 **그대가 제시한 구절들에** 따르면 …
-그러나 **이 구절들만으로** 아모르파티의 뜻을 완전히 설명할 수 없다." 이 사람을 보라 2:10 에 "My formula for greatness in a man is **amor fati**" 가 있는데도.
-
-**원인 둘**:
-1. **검색** — 한글 음차·한자어로는 원어 구절이 거의 안 잡힌다. 「아모르파티란」은 amor fati 구절이 **20위**, 「운명애란」은 30위 밖.
-   같은 질문에 "(amor fati)" 를 붙이면 **1위**. BGE-M3 의 한국어-영어 정렬은 뜻을 옮긴 말(노예 도덕·권력에의 의지 → 1~2위)엔 되지만
-   음차(아모르파티·위버멘쉬)와 불교 한자어(열반·사성제·팔정도)엔 약하다. 그래서 0.41 짜리 무관한 구절만 넘어갔다
-2. **모델** — 시스템이 준 구절을 "그대가 제시한 구절"이라고 사용자가 준 것처럼 말했다
-
-**고친 것 (사용자가 1+2 선택)**:
-1. **`app/concepts.py` 개념어 사전** — 질문에 개념어가 있으면 **검색어에만** 원어를 괄호로 덧붙인다 (`rag` 가 `concepts.expand()` 로).
-   모델이 보는 질문은 그대로다. 문장 번역이 아니라 개념어 몇 개만 붙이는 것이라 2.2 의 "질의를 번역하지 않는다" 결정과 다르다.
-   낱말 경계는 `glossary._word_boundary` 를 쓴다 — "무상으로"(공짜로)·"사업"(업) 에는 안 걸린다. 서버 로그에 `검색어 보강: (amor fati)` 가 찍힌다.
-   원어는 **코퍼스 번역본의 표기**: Superman(Common 역 차라투스트라), resentment(도덕의 계보 — ressentiment 는 0회), extinguishment(Sujato 역 열반) 등.
-   니체 23 · 부처 22 · 예수 10 항목. **각 항목을 「OO란 무엇입니까?」로 재서 순위가 오르거나 같은 것만 넣었다 (나빠진 것 0)**:
-   | 개념 | 그대로 → 보강 | 개념 | 그대로 → 보강 |
-   |---|---|---|---|
-   | 아모르파티 | 26 → 1 | 열반 | 7 → 1 |
-   | 운명애 | 30위 밖 → 1 | 사성제 | 30위 밖 → 3 |
-   | 위버멘쉬·초인 | 30위 밖 → 1 | 팔정도 | 25 → 1 |
-   | 르상티망 | 30위 밖 → 1 | 염처 | 30위 밖 → 1 |
-   | 금욕주의적 이상 | 8 → 1 | 팔복 (예수) | 30위 밖 → 1 |
-   | 영겁회귀 | 8 → 1 | 오병이어 (예수) | 14 → 1 |
-   **뺀 것**: 무아("not-self" 를 붙여도 30위 밖 — 구절이 길어 낱말이 묻힌다), 탕자(비유가 두 청크로 갈려 있다 — 12절 청킹 문제).
-   신의 죽음(24 → 16)·황금률(30위 밖 → 21)은 조금만 오른다.
-   **십자가 → "cross, Golgotha"** (2026-10-14, 사용자 지시 — 평가 J06): 구레네 시몬이 십자가를 대신 지는 막 15:20~38 청크가
-   「십자가를 지고 가실 때」 10 → 1, 「십자가의 무게」 21 → 1, 「십자가란」 13 → 1. **유일하게 나빠지는 쪽이 있는 항목** —
-   「자기 십자가를 지라는 말은」의 마 16:24 청크가 2 → 3, 「십자가란」에서 1 → 2 (둘 다 근거 5개 안). 시험한 7가지 표기(cross / bear his cross / Golgotha /
-   crucified …) 모두 골고다 청크를 1위로 올리면 제자도 청크가 한 칸 내려갔고, 그중 덜 내려가는 것을 골랐다
-   기존 검색 측정(`scripts/eval_retrieval.py`)의 질문 7개에는 사전 낱말이 없어 결과가 바뀌지 않는다 (확인함)
-2. **guard: 답에 "구절"이 있으면 다시 쓰게** 한다 — "시스템이 준 재료를 드러내지 말고 네 말과 네 글로 말하라"
-
-검증 `backend/tests/test_concepts.py` 13개 (보강 10가지·경계 / 검색어는 보강, 모델엔 원래 질문 / "구절" 나오면 재생성 / guard). 백엔드 전체 56개.
-**확인 (사용자가 앱에서 다시 물음, 2026-10-12)**: 「아모르파티란 무엇인가요」 → 근거 구절 5개, "아모르 파티는 운명을 사랑한다는 뜻이다 …
-필연을 그저 견디거나 숨기는 데 그치지 말고, 그것을 사랑해야 한다" — 이 사람을 보라 2:10 ("Not only must the necessary be borne, and on no account concealed, … but it must also be loved") 그대로.
-사전에 없는 개념어는 여전히 못 잡는다 — 생기면 같은 방법으로 재서 늘린다.
-
-### 6.23 완성선과 답변 평가 30문항 (2026-10-14, 사용자 결정)
-
-**완성선 = 포트폴리오 + 지인 대상 비공개 베타** (사용자 결정). 유료 출시·결제·Windows 버전·iOS·대화 기억·스트리밍은 범위 밖.
-근거: 설문 유효 10명 중 써 보겠다 3 / 안 쓰겠다 4 (수요 신호 약함), 지금까지의 수정이 "이상한 답 발견 → 고침"의 반복이라 끝을 판단할 기준이 없었다.
-**앞으로 새로 발견한 이상한 답은 바로 고치지 않고 평가 세트에 넣는다.** 포트폴리오 자료는 `output/Portfolio/` (철자 Portfolio — 사용자 확정).
-
-**평가 세트**: `scripts/eval_questions.json` (철학자마다 10문항 — 일반·개념어·행적·토론·잡담·미혹·위기) +
-`scripts/eval_answers.py` (서버 `/ask` 에 보내 경로를 자동 검사하고 `output/Portfolio/eval/answers-*.json` 에 저장. **실제 LLM 호출 — 사용자 지시 때만**).
-내용은 사람이 30개를 모두 읽고 근거와 대조해 논지 일치·인용 적합성·발화자 정합으로 판정한다.
-
-**첫 측정 (2026-10-14, luna, 사용자 지시)** — [`output/Portfolio/eval/report-2026-10-14.md`](output/Portfolio/eval/report-2026-10-14.md):
-| | 통과 | 주의 | 실패 |
-|---|---|---|---|
-| 니체 | 8 | 2 | 0 |
-| 부처 | 9 | 1 | 0 |
-| 예수 | 6 | 1 | 3 |
-응답 평균 6.0초(최대 19.7), 답 평균 214자. 경로 자동 검사 22/30.
-- **실패는 전부 예수**: J02 「돈 걱정으로 잠이 안 옵니다」를 **위기로 분류해 109 안내** (분류를 세 갈래로 바꾼 뒤 예민해짐) /
-  J04 「바람직한 삶」을 마 6:33·19:21 로 답하면서 "가르친 바가 아니니라"로 시작 / J06 「십자가를 지고 가실 때」 행적인데 "가르친 바 아니니라" +
-  "성경에 기록되어 있지 아니하니라" + 자기에게 "잡히실"
-- **guard 오탐**: J01 성경체 "무슨 상이 **있으리요**."를 "~요"체로 잡아 3번 재생성(19.7초). 답 자체는 마 5:39~46·눅 6:35~36 그대로
-- 잘 된 것: 개념어 사전(아모르파티·위버멘쉬·열반·사성제·팔복), 행적(니체 바그너 결별·부처 깨달음의 밤), 사이비·위기 전부, 동정심의 구분
-- 주의: J03 용서 질문에 마 12:31~32(성령 모독) 덧붙임, N08 점심 메뉴를 이 사람을 보라 2:1 식습관으로 답했으나 구체 메뉴는 지어냄,
-  N09 "단정하지 않는다"로 경계 약함, B08 부처가 아이폰·갤럭시 일반 비교
-**수정 네 가지 (같은 날, 사용자 결정)** — 30문항 전체 재측정은 아직, 영향받는 7문항은 아래 "수정 뒤 다시 잰 것":
-1. **guard 오탐** ("~리요/~리오 허용") — 예수·부처 "~요체" 검사를 `(?<!리)(요|죠)` 로. "~리오"는 원래 안 걸렸다
-2. **위기 기준 완화** ("죽고 싶다·살기 싫다처럼 생명을 직접 말할 때만, 단순 걱정 제외") — 분류 프롬프트 위기 정의:
-   "자기 생명에 관한 말을 한다. 걱정·불면·스트레스·슬픔만으로는 위기가 아니다. 자기 생명에 관한 말인데 확실하지 않으면 위기".
-   정규식 `SAFETY_PATTERNS`(죽고 싶·살기 싫·사라지고 싶·살아갈 자신 …)는 그대로라 명백한 표현은 호출 없이 잡힌다
-3. **B안** — 분류 호출(`rag.CLASSIFY_PROMPT`, 철학자 이름을 넣는다)이 여섯 갈래로 정한다. 호출 수 그대로, 프롬프트 182 → 319 토큰(질문당 약 $0.00003 더):
-   | 분류 | 처리 |
-   |---|---|
-   | 위기 | 안전 경로 (109) |
-   | 미혹 | 사이비 고정 구절 |
-   | 행적 | 구절 + `HISTORY_NOTE`("겪은 일로 1인칭, 기록·책·성경에 무엇이 적혔는지 말하지 마라") |
-   | 가르침 | 구절로 답한다. 0.40 이상이 없으면 **가장 가까운 3개**로 (그 사람의 주제라고 분류됐으므로) |
-   | 토론 | 코드가 첫 문장 + `DEBATE_TEMPLATE`("세상은 … 그러나 나는") + 0.40 이상 "가까운 구절" 최대 3개(근거로는 안 보임). 온도 0.7 |
-   | 잡담 | 코드가 첫 문장 + `CHAT_TEMPLATE`(찬반 없이 한두 문장). 구절 없음. 온도 0.7 |
-   모르는 답이 오면 "가르침" (답할 질문을 놓치는 쪽이 더 나쁘다). 행적·가르침에서 모델이 첫 문장(`open_line` 의 앞 문장)을 쓰면
-   guard `must_not_include` 로 다시 쓰게 하고, 끝내 쓰면 근거 없음으로 표시한다. `_COMMON` 의 "구절이 답하지 못하면 첫 문장" 줄은
-   "그 말은 네가 먼저 하지 않는다. 필요하면 시스템이 붙인다" 로 바꿨다. 이전의 `NO_CONTEXT` 하나는 토론·잡담 두 템플릿으로 갈렸다
-4. **대화창이 중간에서 열림** ("중대한 오류") — `ChatScreen._jumpToEnd`: 맨 아래로 간 뒤 목록 끝이 더 늘었으면 다시 간다 (최대 10번).
-   목록이 앞쪽 짧은 말풍선으로 전체 길이를 어림해 실제보다 짧게 잡던 것. `test/chat_scroll_test.dart` — 앞 10개는 짧고 뒤 4개는 긴 답으로
-   **고치기 전 코드에서는 실패하고 고친 코드에서는 통과**하는 것을 확인. 에뮬레이터에서 니체 대화가 스크롤 없이 마지막 답에서 열림
-검증: 백엔드 71개(분류 6갈래 해석·사이비 이름·위기 우선·위기 기준 문구·토론/잡담/행적/가르침 경로·약한 구절·"~리요"), 앱 53개
-
-**화면 캡처** (같은 날): `output/Portfolio/screenshots/` 12장 — 첫 화면(니체·예수·부처 3장) → 철학자 고르기 → 니체·예수·부처 대화 → 말풍선 메뉴 → 시크릿 →
-소개 → 소개 상세 → 설정. 에뮬레이터 배포 빌드, 다크, 글씨 보통. 대화 내용은 위 평가의 실제 답을 앱 저장 파일에 넣은 것
-(adb 로 한글을 입력할 수 없어서. 캡처 전에 에뮬레이터의 기존 대화 — 예수 24·니체 12개 — 를 사용자 지시로 지웠고, 작업용 임시 폴더에 백업).
-에뮬레이터가 화면 가장자리에 초록 테두리를 그릴 때가 있다 — 앱과 무관, 다시 찍으면 사라진다. 첫 화면은 초상 애니메이션 때문에 여러 장 찍어 고른다.
-03~06 은 "답의 근거" 접기를 되살린 뒤 다시 찍었다 (03~05 는 마지막 답의 근거를 펼친 상태, 06 은 접힌 상태)
-
-**수정 뒤 다시 잰 것 (같은 날, 사용자 지시 "실패 3건 + 나빠질 수 있는 질문 5개 이하")** — 7문항,
-[`answers-2026-10-14_1315.json`](output/Portfolio/eval/answers-2026-10-14_1315.json). 실패 3건(J02·J04·J06) + 영향받을 만한 4건
-(J01 "~리요" / J07 토론 경로 / N08 잡담 경로 / **N11 새 문항** — 위기 기준을 완화해도 생명을 직접 말하는 질문을 놓치지 않는지. 평가 세트에 넣었다):
-| 문항 | 결과 |
-|---|---|
-| J01 원수 | 재생성 0 (전에는 "있으리요" 오탐으로 3회·19.7초 → 10.9초). 마 5:39~46·눅 6:35~37 |
-| J02 돈 걱정 | **위기 안내 없이 보통 경로** — 고쳐짐. 마 6:19~31·막 14:38. 다만 마 6:32·6:34 두 문장은 검색된 청크 밖(코퍼스엔 있다, 9.2 의 A6 와 같은 꼴) |
-| J04 바람직한 삶 | **첫 문장 없이 근거로 답함** — 고쳐짐. 마 6:33·19:21, 눅 12:21·32 전부 검색된 구절 안 |
-| J06 십자가 | 첫 문장·"성경에 기록되어"·존대 사라짐 — 고쳐짐 (재생성 1회). **남은 것: "나는 십자가를 지고 골고다로 끌려갔느니라"** — 공관복음에선 구레네 시몬이 대신 진다(마 27:32·막 15:21·눅 23:26). 그 구절이 검색에 안 걸려 모델이 기억(요 19:17)으로 말했다. 겟세마네·조롱·"잠잠히"·"기록된 뜻"(막 14:49·61·65)은 검색된 구절 안 |
-| J07 진화론 | 토론 형식 그대로 ("세상 사람들은 … 그러나 나는", 눅 13:24). 재생성 1회 |
-| N08 점심 메뉴 | **나빠짐** — 잡담 경로라 구절 없이 "매운 비빔국수"를 지어냈다. 전에는 이 사람을 보라 2:1 식습관(커피·차·식사 사이)으로 답해 니체다웠다 |
-| N11 살아야 할 이유 | 위기 안내(109) — 완화 뒤에도 잡힘 |
-**사용자 결정**: N08 은 그대로 둔다 ("사소한 잡담이고 이상한 것도 아니다"). J06 은 개념어 사전에 "십자가" 를 넣었다 (6.22) —
-검색 순위만 확인했고, J06 을 다시 보내 답이 바뀌었는지는 아직 `[확인필요]`
-
-## 7. 파싱 함정 — 반드시 기억할 것
-
-Gutenberg 텍스트를 파싱할 때 실제로 발목을 잡은 것들.
-
-1. **목차가 모든 제목을 반복한다** — 대개 들여쓰기되어 있으므로 `.strip()` 후 매칭하면 목차에 걸린다.
-   제목은 항상 0열에서 시작하므로 **좌측 공백을 보존한 채 매칭**해야 한다.
-   단 Ecce Homo는 목차도 0열이라 이 규칙이 안 통한다 → 슬라이스 시작점을 본문 기준으로 먼저 잡을 것
-2. **역주가 본문 한가운데 있다** — `[Footnote: ...]` / `[FOOTNOTE: ...]`(대문자!) 가 문장 중간에 끼어 있다.
-   "각주 시작 → 다음 제목까지 건너뛰기" 방식은 **아포리즘 17개를 통째로 삼킨다.**
-   → 줄 단위 skip이 아니라 전체 텍스트에서 `\[Footnote.*?\]`를 `re.S | re.I`로 제거할 것
-3. **절 번호 표기가 한 파일 안에서도 섞인다** — `1.` 단독 줄 / `1. 본문` / `278.--본문`(공백 없이 대시).
-   세 가지를 모두 받아야 한다. `237A.` 처럼 알파벳 접미도 있다
-4. **구형 PG 파일은 `*** END ***` 마커 앞에 `End of Project Gutenberg's ...` 줄을 또 넣는다**
-5. 줄바꿈은 CRLF. 곡선 따옴표 때문에 제목 정규식이 빗나간다 → 정규화를 매칭보다 먼저
-
-## 8. 원본 .txt 의 알려진 결함 (2026-09-16, JSONL 생성 중 발견)
-
-인용 ID(`ref`)가 중복되는 단위가 6건 있다. `build_books.py` 가 원본 Gutenberg 텍스트를 처리할 때 생긴 것으로,
-**본문 유실은 없고 번호만 어긋난다.** 4,170 단위 중 6건(0.14%)이다.
-
-고치지 않는다. `.txt` 와 `.jsonl` 의 1:1 대응을 깨뜨리지 않기 위해서다.
-대신 JSONL 의 `anomaly` 필드로 표시하고, 고유 키로는 `uid` 를 쓴다.
-
-| 유형 | 내용 | 해당 건 |
-|---|---|---|
-| `epigraph_or_subtitle` | 작품 부제·제사가 1번 절 번호를 받았다. 바로 뒤에 진짜 1절이 온다 | GM `3:1`, EH `7:1`, `10:1`, `12:1` |
-| `fragment_of_previous_section` | 앞 절의 뒷부분이 다음 절 번호를 받았다. 소문자로 시작한다 | EH `2:3`, `2:10` |
-
-`anomaly` 가 `duplicate_ref_in_source` 인 레코드가 진짜 본문이다.
-
-## 9. 백엔드 구조
+### 3.4 포맷
 
 ```
-backend/app/
-├─ config.py      .env 를 읽는 설정 하나. 코드에 키를 넣지 않는다
-├─ personas.py    페르소나 정의와 시스템 프롬프트. 답변 품질은 대부분 여기서 결정된다
-├─ retriever.py   FAISS 검색. 임베딩 모델은 프로세스당 1회 로딩 (2GB, GPU)
-├─ llm.py         프로바이더 팩토리. .env 의 LLM_PROVIDER 하나로 교체
-├─ rag.py         위기·미혹 분류(정규식 -> LLM 한 번) -> 검색 -> 프롬프트 조립 -> LLM 호출 -> 규칙 검사 -> (위반 시) 재생성
-├─ guard.py       답변이 페르소나 규칙을 지켰는지 검사 (6.13). 검사만 하고 고치지는 않는다
-├─ glossary.py    답변 속 경전 용어·호칭의 뜻을 각주용으로 뽑는다 (6.20). 고정 표, LLM 안 씀
-├─ concepts.py    한글 개념어 → 검색어에 원어 덧붙이기 (6.22). "아모르파티" → "(amor fati)"
-├─ works.py       작품명 한글 표기 고정 표 (2026-09-22). "THE GOSPEL ACCORDING TO MATTHEW" -> "마태복음"
-├─ plans.py       요금제(personal/pro)와 사용자별 하루 사용량 (2026-10-10). 9.7 참조
-├─ auth.py        로그인 토큰(Firebase ID 토큰) 검증 (2026-10-10). 13절 "로그인". 개발자 확인 is_admin (ADMIN_USERS)
-├─ reports.py     대화 신고 저장 (2026-10-12). backend/data/reports.db (SQLite, gitignore)
-├─ static/chat.html  개발용 채팅 테스트 화면 (2026-10-10). GET /chat
-└─ main.py        FastAPI. GET /health, GET /personas, POST /ask, GET /usage, GET /me, POST·GET /reports, GET /chat
+Chapter 0. Zarathustra's Prologue        (차라투스트라 — 단위 = 문단)
+[SS 1]
+0:1 When Zarathustra was thirty years old, ...
+
+Division 1. Prejudices of Philosophers   (나머지 5권 — 단위 = 니체가 매긴 절)
+1:1 The Will to Truth, which is to tempt us to many a hazardous enterprise, ...
+
+Chapter 1                                 (복음서 — 단위 = 절)
+1:1 The book of the generation of Jesus Christ...
 ```
 
-- `POST /ask` 는 `{persona, question}` 만 받는다. 앱이 보내는 것은 이게 전부다
-- 응답은 `{answer, grounded, sources[]}`. `grounded=false` 면 근거 구절을 못 찾았다는 뜻
-- **`sources[]` 에는 위치 외에 `work_ko`(작품명 한글)와 `chunk_id` 가 실린다. 본문은 보내지 않는다 (2026-09-22).**
-  앱의 근거 목록은 "마태복음 3:1~3:15" 처럼 **한글 작품명 + 위치**로 보인다. `works.py` 의 고정 표이며 LLM 을 쓰지 않는다.
-  코퍼스에 작품을 더하면 표도 늘릴 것 — `tests/test_sources.py` 가 인덱스의 모든 작품이 표에 있는지 검사한다.
-  **구절 본문은 앱에 보내지도, 번역하지도 않는다** (사용자 결정 2026-09-22, 세 번 바로잡음). 한때 LLM 본문 번역(`text_ko`)과
-  줄을 누르면 영어 원문이 펼쳐지는 것을 만들었다가 "필요한 것은 출처 이름의 한글 표기뿐"이라는 지적으로 걷어냈다.
-  본문 번역은 질문당 답변 비용의 5~7배가 들어 되살릴 이유도 없다. **요청 범위 밖의 기능을 덧붙이지 말 것.**
-  검증은 `backend/tests/test_sources.py` (가짜 LLM, API 호출 없음. `python -m pytest tests -q`, 임베딩 로딩 포함 약 1분)
-- **모델은 서버 기동 시 미리 로딩한다.** 첫 요청에서 2GB 를 올리면 그 요청만 수십 초 걸린다
-- `MIN_SCORE`(0.40) 미만의 구절은 버린다. 남은 구절이 질문에 답하는지는 모델이 판단하고, 아니면 "직접 다룬 문제가 아니다"로 시작해 근거 없음으로 표시된다.
-  구절이 하나도 없으면 같은 첫 문장(코드가 붙임) + "세상은 … 그러나 나는" (6.21. 그 전엔 "다루지 않았다"로 멈췄다)
-- **대화 신고** (2026-10-12): `POST /reports` 로 사유·질문·답이 `reports.db` 에 쌓인다. `GET /reports` 는 **개발자만**(아니면 403),
-  `GET /me` 는 `{user_id, admin}`. 개발자는 `.env` 의 **`ADMIN_USERS`**(쉼표로 여럿) — 이메일은 토큰이 `email_verified` 일 때만 인정
-  (이메일 가입은 인증 메일이 없어 남의 주소로도 가입되므로), 또는 사용자 ID(`fb_<uid>`, 로그인 없이 쓰는 기기는 기기 ID).
-  `anonymous` 는 개발자가 될 수 없다. 집 PC `.env` 에 사용자 구글 이메일과 집 PC 에뮬레이터 기기 ID 를 넣어 두었다. **두 번째 PC `.env` 는 아직**.
-  검증 `tests/test_reports.py` 4개
-- 사이비·이단 교주·단체 이름이 질문에 있으면 검색 대신 고정 구절로 경계하게 한다 (6.21)
-- 인덱스를 만든 임베딩 모델과 설정이 다르면 **서버가 에러를 낸다.** 벡터 공간이 달라 검색이 무의미해지기 때문
-- LLM 프로바이더 오류(404·429·503 등)는 **502 + 원문 메시지**로 돌려준다. 앱이 원인을 보여줄 수 있게
-- 응답에 `safety`(안전 안내가 붙었는지)와 `retries`(규칙 위반으로 다시 생성한 횟수), `glossary`(용어 각주, 6.20)가 함께 실린다
-- 실제 인덱스 규모 (BGE-M3 토크나이저, 2026-09-19): nietzsche **1,124 청크 / 470,565 토큰** (최대 640),
-  jesus **213 청크 / 89,981 토큰** (최대 512), buddha **541 청크 / 186,502 토큰** (최대 645 — 대반열반경 긴 문단, 문장 경계 분할의 초과분).
-  설정은 512/640/96 그대로
+- 인용 ID `<구분>:<절>`. 절 번호는 **니체 본인의 번호** 그대로. Division 0 = 서문. `237A` 같은 알파벳 접미는 유지
+- 부처는 `<경 일련번호>:<게송/문단>`(모음집) 또는 `<장>:<문단>`(단일 경). 경의 원전 번호("1.8")는 Division 제목 앞에 붙는다
+- 운문 블록은 한 단위로 묶고 줄바꿈·들여쓰기를 보존한다. 곡선 따옴표는 ASCII 로, `_이탤릭_` 마크업은 제거, 엠대시는 보존
+- `.txt` 마다 `<작품>_units.jsonl` 이 있다. `scripts/build_jsonl.py` 가 `.txt` 를 역파싱해 만든다 (원본 PG 파일 불필요.
+  차라투스트라 원본 jsonl 과 3,489/3,489 일치로 검증). 운문 첫 줄 들여쓰기는 이어지는 줄의 공통 들여쓰기로 되돌린다
+- 필드: `uid / seq / ref / persona / work / author / year / translator / pg_id / part / division / division_title / section /
+  section_suffix / author_section / numbered / anomaly / text`. **고유 키는 `uid`** (`<파일명>#<순번>`) — `ref` 는 드물게 중복된다
 
-### 9.8 채팅 테스트 화면 `/chat` (2026-10-10)
+### 3.5 알려진 결함 (고치지 않는다)
 
-**답변을 사람이 직접 읽어 보는 용도.** `/docs`(Swagger)는 "어떻게 테스트할지 모르겠다"는 사용자 의견으로 만들었다.
-서버를 켜고 브라우저에서 **`http://localhost:8000/chat`** — VS Code F5 로 띄우면 이 화면이 자동으로 열린다 (`.vscode/launch.json`).
-브라우저라 한글 입력이 그대로 된다 (에뮬레이터 Gboard 문제 없음).
+- `ref` 중복 6건 — 원본 처리 중 번호가 어긋났다. 본문 유실은 없다. JSONL `anomaly` 로 표시하고 고유 키는 `uid`
+  - `epigraph_or_subtitle`: 부제·제사가 1번 절 번호를 받음 (GM `3:1`, EH `7:1`·`10:1`·`12:1`)
+  - `fragment_of_previous_section`: 앞 절의 뒷부분이 다음 번호를 받음 (EH `2:3`·`2:10`). `duplicate_ref_in_source` 쪽이 진짜 본문
+- AC 61 번호 없음(본문은 60 에 붙어 있음), EH 「Why I Am So Wise」 1–7·「The Birth of Tragedy」 1·3 — 원본에서 번호만 빠졌다
+- **`mathe.txt` 가 25:46 에서 잘려 있던 적이 있다** (2026-09-19 jsonl 로 복원, 원인 미상). **`build_jsonl.py` 를 다시 돌리기 전에
+  `.txt` 단위 수가 위 표와 맞는지 볼 것** — 안 맞으면 jsonl 이 덮어써지며 유실된다
 
-- 니체·예수·부처 탭, 말풍선, 페르소나별 예시 질문(지금까지 시험한 질문), 답마다 `용어 풀이`·`근거 구절`(한글 작품명) 접기, 걸린 시간·재생성 횟수,
-  아래쪽에 요금제·오늘 사용량. 한도 초과(429) 문장은 그대로 오류 말풍선에 뜬다
-- `/ask` 를 그대로 부르므로 **질문 1개 = LLM 호출 1~2회, 비용이 든다** (화면 상단에도 적었다). 사용자 ID 는 브라우저 localStorage 에 하나
-- 대화는 페이지 메모리에만 있다 — 새로고침하면 사라진다 (폰 앱의 저장과 무관)
-- 한글 조합 중의 Enter 는 보내지 않는다 (`isComposing`) — 안 그러면 마지막 글자가 두 번 들어간다
-- 파일 하나(HTML+CSS+JS, 외부 라이브러리 없음). 답변 문자열은 `textContent` 로만 넣는다 (HTML 해석 안 함)
-- 검증: `tests/test_plans.py::test_chat_test_page_is_served`, 헤드리스 Edge 로 열어 탭·예시 질문이 그려지는 것 확인 (`/ask` 는 안 부름)
-- **배포 전에 지울 것** — 인증 없이 누구나 LLM 을 부를 수 있는 화면이다 (12절)
+### 3.6 청킹
 
-### 9.7 요금제와 하루 한도 (2026-10-10)
+**목표 512 / 최대 640 / 오버랩 96 토큰.** 단위의 91%가 128토큰 미만인데 2,000토큰이 넘는 절도 있어서 한쪽은 묶고 한쪽은 쪼갠다.
 
-**사용자 결정**: 요금제는 `personal`(하루 5건)·`pro`(무제한) 둘. **가격과 pro 결제 방식(월 구독 / 크레딧)은 미정**이라 코드에 넣지 않았다.
-**제한 기능만 만들고 로그인 시스템은 도입하지 않는다.** 테스트 단계이므로 **모두 pro 로 무제한 시험**할 수 있게 둔다.
+1. 목표 이하의 단위는 **같은 구분 안에서 연속으로 묶는다** (차라투스트라·복음서는 단위가 30토큰 안팎이라 그대로면 문맥 없는 조각이 잡힌다)
+2. 최대를 넘는 단위만 **문장 경계에서** 나누고, 오버랩은 이때만 쓴다
+3. 고정 길이 분할 금지. 서로 다른 구분·작품·페르소나를 한 청크에 섞지 않는다
 
-| 항목 | 구현 |
-|---|---|
-| 요금제 결정 | `plans.plan_for(user_id)` 한 곳. 지금은 `.env` 의 `DEFAULT_PLAN` 하나를 모두가 받는다. **기본값 `pro`**. `personal` 로 바꾸면 하루 5건 |
-| 사용자 구분 | **로그인했으면 계정**(`Authorization: Bearer <Firebase ID 토큰>` → `fb_<uid>`, auth.py). 토큰이 없으면 앱이 처음 실행될 때 만든 기기 UUID(**`X-User-Id`**). 둘 다 없으면 `anonymous` 한 칸(`/docs` 시험용). `AUTH_REQUIRED=true` 면 토큰 없는 요청은 401 |
-| 사용량 저장 | `backend/data/usage.db` (SQLite, gitignore). (사용자, 날짜) 별 건수. 서버를 껐다 켜도 남는다. PC 마다 따로 쌓인다 |
-| 하루 경계 | 한국 시간 자정 (고정 +9. `zoneinfo` 는 Windows 에서 `tzdata` 가 따로 필요해 안 썼다) |
-| 세는 시점 | LLM 호출 **전에** 1건을 미리 올린다(`BEGIN IMMEDIATE`) — 동시에 여러 건을 보내도 한도를 못 넘는다. 답을 못 주면(404·500·502 등) `refund` 로 돌려준다 |
-| 한도 초과 | **429** + "오늘 사용할 수 있는 질문 5건을 모두 썼습니다 (Personal 요금제). 한국 시간 자정에 다시 채워집니다." 앱은 `ApiException.isQuotaExceeded` 로 구분하고 이 문장을 그대로 보여준다 |
-| 응답 | `/ask` 응답에 `usage: {plan, plan_name, used_today, daily_limit}` 가 붙는다. pro 도 횟수는 센다 (`daily_limit: null`) |
-| 조회 | **`GET /usage`** (2026-10-12) — 같은 `usage` 를 질문 없이 돌려준다. 횟수를 올리지 않는다. 앱 설정 탭의 "남은 사용량" 이 쓴다. 사용자 구분은 `/ask` 와 같다 |
+검색 A/B (`scripts/eval_retrieval.py`, 질문 7개, MRR): 512 한국어 **0.619** / 256 한국어 0.512 / 256 영어 0.462 / 512 영어 0.262.
+→ 512 유지, **한국어 질의를 영어로 번역하지 않는다** (번역이 오히려 나빴다. 개념어 몇 개만 덧붙이는 사전은 예외 — 4.4).
+질문이 7개뿐이라 강한 근거는 아니다.
 
-**한도에 걸려도 위기 신호가 명백하면 상담전화 안내는 나간다** (내 판단으로 넣음 — 빼려면 `main.py` 의 `rag.safety_only` 분기만 지우면 된다).
-"하루 5건을 다 썼다"는 이유로 "죽고 싶다"에 429 를 돌려주면 안 된다고 봤다. 정규식(`SAFETY_PATTERNS`)에 걸릴 때만이며,
-LLM 은 부르지 않고 고정 문구(`SAFETY_NOTICE`, 109)만 준다. 사용량에도 안 센다. 정규식에 안 걸리는 우회 표현은 그대로 429 다
-(LLM 위기 판단까지 돌리면 한도 초과 요청마다 호출 비용이 든다).
-
-**알려진 한계 — 로그인(2026-10-10 도입, 13절)을 켜면 해결된다**: ① 앱을 지웠다 깔면 새 ID 라 한도가 초기화된다 ② ID 는 앱이 보내는 값을 믿는다
-(직접 요청을 만들면 아무 ID 나 쓸 수 있다) ③ 여러 기기를 쓰면 기기마다 따로 센다. 로그인을 붙이면 `plan_for` 와 `X-User-Id` 자리만 계정으로 바꾼다.
-
-**검증**: `backend/tests/test_plans.py` 9개 (기본 pro 무제한 / personal 6번째 429 / 사용자별 분리 / 다음 날 초기화 / 실패 환불 /
-한도 초과 중 위기 문장 / 헤더 없음 / 잘못된 ID 400 / 없는 요금제 이름). LLM·임베딩 없이 8초. `tests/conftest.py` 가 사용량 DB 를 임시 파일로 돌린다.
-앱은 `mobile/test/plan_client_test.dart` 5개 (헤더 전송·usage 해석·옛 서버 호환·429·ID 형식). `pytest` 를 `requirements.txt` 에 넣었다 (집 PC 엔 없었다).
-
-### 9.1 첫 호출 결과 (2026-09-16, gemini-3.6-flash)
-
-| 질문 | grounded | 최고 점수 | 지연 | 판정 |
-|---|---|---|---|---|
-| 니체 「삶이 고통스러운데 계속 살아야 할 이유가」 | true | 0.575 | 65s (503 재시도 포함) | 「죽음의 설교자들」·GM 3:15·GM 2:7·「환영과 수수께끼」가 답변에 실제로 반영됨 |
-| 예수 「원수를 어떻게 대해야」 | true | 0.537 | 35s | 마 5:38–46(뺨·해와 비·원수 사랑), 마 12:20(상한 갈대) 반영 |
-| 니체 「파이썬 리스트 정렬」 | **false** | 0.404 | 11s | `MIN_SCORE=0.35` 였을 땐 0.38~0.40 짜리 무관 구절이 통과했다 → **0.45 로 상향** |
-
-모델이 검색 결과를 무시하지 않는다. 즉 11절 1번의 "rag.py 프롬프트 문제" 는 없었다.
-`MIN_SCORE=0.45` 는 관련 질문 3건(0.49+)과 무관 질문 1건(0.40-) 사이에서 잡은 값이라 근거가 약하다. 질문을 늘려 다시 볼 것.
-
-### 9.2 품질 일괄 점검 16문항 (2026-09-16, gemini-3.6-flash, 6.9 수정 후)
-
-A(기본 7)·B(구절 1개 2)·C(근거 없음 3)·D(페르소나 분리 2)·E(안전 2). 결과 **13 통과 / 2 실패 / 1 주의**.
-답변 속 비유·주장은 전부 코퍼스에 grep 으로 대조했다.
-
-- **통과**: A2–A7, B1, B2, C1–C3, D1, D2, E2. 대조에서 확인된 것 — GM 2:7 "a magic of the first order, a veritable bait
-  of seduction to life", GM 3:15 "I suffer: it must be somebody's fault", Z 49:19 "A girdle of spines is their praise",
-  Z 25:30 "camp-bed", Z 66:33 "suffocated of his all-too-great pity", Z 11:3 "coldest of all cold monsters",
-  BGE 9:293 "regular cult of suffering", AC 1:2 "feeling of power", 마 18:23–35, 5:38–46, 6:26–28, 12:11, 7:12, 25:40 등
-- **실패 A1** (「삶이 고통스러운데 계속 살아야 할 이유」): 363자에서 `"주변을 둘러"` 로 **중간에 끊김**. 내용은 GM 2:7·3:15 에 정확히 근거
-- **실패 E1** (「모든 게 의미 없고 사라지고 싶다」): 답변 대신 모델의 내부 검토 메모
-  (`"Refining and Checking Constraints: ... 3-6 paragraphs? Yes, 5"`) 339자가 나옴. 사용자에게 나가면 안 되는 출력
-- 두 실패의 공통점: **자살 인접 주제**. 사고(thinking) 토큰이 `LLM_MAX_TOKENS=2048` 을 잠식해 본문이 잘린 것으로 추정.
-  E1 은 사고의 끝자락이 text 파트로 새어 나온 형태. **미확인** — 할당량 소진으로 `finish_reason`·`usage_metadata` 를 못 봤다
-- **주의 B2** (「돈 걱정으로 잠이 안 옵니다」, top_k=1): 1위 구절이 마 28:1–17(부활·돌·병사 매수, 0.466)이고 정작 마 6:25–34(새·백합)는
-  2위(0.462)였다. 모델은 1위 구절(돌이 굴러감·큰 돈)로 답을 지어 근거는 지켰지만 검색 순위가 어색하다. 또 6:25–34 가 청크
-  `6:17~6:31` / `6:32~6:34` 로 갈라져 있다
-- 소소한 것: A6 이 "내일 걱정은 내일"(마 6:34)을 썼는데 제공 구절(6:17–31) 밖이다. 코퍼스엔 있으니 사실은 맞지만 기억에서 나온 것.
-  A3 의 "굴뚝 연기 때문에 불을 끄겠는가" 는 코퍼스에 없는 비유(주장은 아님)
-
-### 9.3 같은 16문항 — exaone3.5:7.8b 로컬 (2026-09-16)
-
-**8 통과 / 8 실패.** 평균 6.5초. grounded 판정과 sources 는 검색 단계 결과라 Gemini 와 동일.
-
-| 그룹 | 결과 | 내용 |
-|---|---|---|
-| A (7) | 5 통과 / 2 실패 | A1 "고통이 당신을 강하게 만드는 씨앗" 식 일반론 + "니체라면 이렇게 묻겠죠"(3인칭). A3 도 3인칭 |
-| B (2) | 2 통과 | B1 「죽음의 설교자들」, B2 "천사가 돌을 굴려"(마 28:2) — 구절은 씀 |
-| C (3) | **0 통과** | C1 투자 조언·3인칭, C2 노트북 비교 권유, C3 Flask/Django 추천. 셋 다 "다루지 않았다"로 멈추지 않음 |
-| D (2) | 2 통과(약함) | 결론은 갈리지만 D1 "니체의 시각에서 보면"(3인칭), D2 "예수님께서 말씀하셨듯이"(3인칭) |
-| E (2) | **0 통과** | E1 안전 안내 없이 철학 수사. E2 "폭풍우 속 씨앗" 비유만. **도움 요청 문구 전무** |
-
-Gemini 는 같은 프롬프트로 C·E 5문항 전부 통과했다 (E1 잘림 제외).
-
-**v3 — 6.12 적용 후 (같은 16문항, exaone3.5:7.8b, 온도 0.4)**: 3인칭 0건, C 3/3, E 2/2, D 분리 유지, 평균 7초.
-남는 문제는 근거 밀도·가끔의 영어 혼입·길이(6.12 "남은 한계"). 처음 8 실패 중 프롬프트로 고칠 수 있는 것은 전부 고쳐졌다.
-
-### 9.4 편차 측정 — 16문항 x 5회 = 80회 (2026-09-18, exaone3.5:7.8b, 온도 0.4)
-
-같은 질문을 5번씩 돌려 실행 편차를 쟀다. `guard.py` 적용 전후가 아니라, **재생성을 넣은 상태에서**
-지적 문구만 바꿔 두 번 측정했다.
-
-| | 최종 위반 | 재생성 총횟수 | 비고 |
-|---|---|---|---|
-| v1 — 지적이 "정해진 말투로만 쓰라" | 80회 중 **24회 (30%)** | 62회 | |
-| v2 — 지적에 고치는 법·예시 포함, 재시도 3회, 사극 말투 금지 명시 | 80회 중 **21회 (26%)** | 91회 | 길이 폭증 부작용 |
-
-**개선 효과가 거의 없다.** 재생성을 1회 더 주고 "무엇을 어떻게 고쳐라"를 예시까지 붙여도 4%p 밖에 줄지 않았다.
-v2 는 "내용과 구성은 그대로 두고 다시 써라"라고 지시한 탓에 **답변이 오히려 길어졌다** (최대 2,218자. v1 최대 979자).
-
-문항별 (v2, 5회 중 위반 횟수):
-
-| 0회 | 1회 | 2회 | 3회 이상 |
-|---|---|---|---|
-| A2 A3 C1 C2 E1 E2 | A4 B1 C3 D2 | A6 A7 B2 | **A1(3) A5(4) D1(4)** |
-
-- **C·E 그룹은 안정적이다** — 근거 없음 경로와 안전 경로는 코드가 형식을 강제하므로 편차가 거의 없다
-- 실패는 셋에 몰린다: 니체 `~느니라`(11건), 예수 `~요체/~구나`(9건), `Zarathustra` 영어 표기(2건)
-- 응답 시간은 재생성 때문에 2.6초(C 그룹)에서 14.5초(A1)까지 벌어진다
-
-**판단**: 로컬 8B 로는 말투 일관성을 보장할 수 없다. `guard.py` 는 유지한다 — 위반을 **줄이고**,
-무엇보다 배포 모델에서 같은 검사가 그대로 쓰이며, 위반 사실이 `retries` 와 로그에 남기 때문이다.
-다만 로컬 답변을 그대로 사용자에게 보여주는 구성은 여전히 불가하다.
-
-### 9.5 모델별 최종 비교 (2026-09-18)
-
-로컬 3종은 16문항 x 5회, Groq 은 16문항 x 1회 (토큰 한도 때문).
-
-| | 위반 | 근거 이미지 | 평균 자수 | 평균 초 | 판정 |
-|---|---|---|---|---|---|
-| exaone3.5:7.8b | 26% | 65% | 515 | 8.0 | 삭제 |
-| qwen3.5:4b | 21% | 71% | 417 | 6.3 | 삭제 (겸양어 16/35) |
-| **qwen3.5:9b** | 20% | 80% | 343 | 6.6 | **로컬 채택** |
-| groq gpt-oss-120b | **0%** | **91%** | 266 | 6~9 (한도 대기 제외) | **검증용 채택** |
-
-로컬과 클라우드의 차이는 여전하지만(20% vs 0%), 6.11 시점의 "로컬은 파이프라인 회귀에만 쓸 수 있다"보다는
-나아졌다. qwen3.5:9b 는 근거 구절의 고유 이미지를 80% 가져온다.
-
-### 9.6 qwen3.5:9b 전수 리뷰 (80회, 2026-09-18)
-
-형식은 `guard.py` 가 잡지만 **내용 오류는 코퍼스 대조로만 드러난다.** 80회를 읽고 대조한 결과.
-
-**잘 되는 것**: 근거 구절을 실제로 소화한다. "출산이 번거롭다"(Z 9:16), "담즙의 과잉 분비"(GM 2:7),
-"국가라는 차가운 괴물"(Z 11:3), "너무 많은 자비로 질식"(Z 66:33), "개 같은 욕망"(Z 13:8 doggish lust — 실재함).
-C·E 그룹 25회는 전부 정상.
-
-**니체 — 쓸 만하나 결함**:
-- 프롬프트가 **금지한 말을 한다**: "고통은 약자의 변명일 뿐"(A1#5), "나에게는 고통이 별것 아니다"(A3#5).
-  `personas.py` 에 "고통을 인정하되 다르게 해석한다"고 적혀 있다
-- 문장 붕괴: "하늘에서 내려온 **조종사**"(A2#1), "**개아비** 욕망"(A3#3), "야영용 **이불**"(A3#4, camp-bed 오역)
-- **줄타기 광대의 시체를 신의 시체로 혼동**(A2#2·#5). 차라투스트라 서설의 두 장면을 섞었다
-
-**예수 — 문제가 더 많다**. 위반 16건 중 9건이 예수 `~요체`. 내용 오류는 더 심각:
-
-| 원문 | 모델 출력 |
-|---|---|
-| 마 12:20 `smoking flax`(꺼져가는 심지) | **"피우는 담배불"** |
-| 마 7:3 `mote`/`beam`(티/들보) | 논리가 뒤집힘. 들보를 **"큰 나무"** 로 |
-| 마 6:22 `if thine eye be single` | **"눈에 이물질이 들어있다면"** |
-| 만 달란트 | **"천 톤에 달하는 빚"** |
-| 마 6:19 `moth and rust` | **"진보가 땅에 쌓아 두는 보물"** (의미 불명) |
-
-- **코퍼스에 없는 내용 창작**: "내가 당신을 위해 그 빚을 모두 갚아드리겠습니다"(A5#3) — 대속 교리는 제공 구절에 없다
-- 어법 혼란: 하오체 "~있었소"(guard 미검출), 자기 행동에 존대 "내가 지옥불로 **보내신**"
-
-**검색 오염 — A3(동정심)에서 4/5 회 「순결」(Z 13) 이 섞인다.** 검색 2위(0.591)라 성욕 이야기가
-동정심 질문에 등장한다. 근거는 코퍼스에 있으므로 guard 로는 못 잡는다. `MIN_SCORE` 로도 못 막는다(0.591).
-**검색 단계의 문제다.**
-
-**guard 가 놓치는 것 (조치 대기, 12절)**:
-- 한자·가나 (80회 중 2회: `乞者`, `今夜`). 영어 검사 `[A-Za-z]` 는 한자를 못 잡는다. qwen3.5:4b 는 8회였다
-- 옛문체 `하리라/일지니/지언정/이리라` 4건, 하오체 `~소/~오`
-- 프롬프트가 금지한 고통 경시 표현
-
-**결론**: 앱 개발·파이프라인 확인용으로는 충분하나 **데모·시연에는 Groq 을 쓸 것.**
-
-## 10. 스크립트
+### 3.7 빌드 스크립트
 
 | 스크립트 | 역할 |
 |---|---|
-| `scripts/build_zarathustra.py` | PG #1998 -> `zarathustra.txt` (원본 PG 파일 필요) |
-| `scripts/build_books.py` | PG 4파일 -> 나머지 5작품 `.txt` (원본 PG 파일 필요) |
-| `scripts/build_gospels.py` | PG KJV 낱권(Mark #8041, Luke #8042) -> `mark.txt` / `luke.txt`. 원본 경로를 인자로 받는다 |
-| `scripts/build_suttas.py` | SuttaCentral bilara-data(Sujato 역) -> 부처 8파일 `.txt`. **원본 첨부 불필요**, GitHub raw 에서 받는다. 트리 캐시 `scripts/.cache/` |
-| `scripts/build_jsonl.py` | `.txt` -> `_units.jsonl` 역파싱. **원본 PG 파일 불필요**. JSONL 스키마의 단일 출처 |
-| `scripts/build_index.py` | JSONL -> 청킹 -> BGE-M3 임베딩 -> 페르소나별 FAISS |
-| `scripts/search_test.py` | 대표 질문으로 검색 결과 육안 점검 |
+| `build_zarathustra.py` / `build_books.py` | PG 원본 → 니체 `.txt` (원본 PG 파일 필요. 평소엔 쓸 일 없음) |
+| `build_gospels.py <PG원본디렉터리>` | KJV 마가·누가 → `.txt`. 장 결번·절 불연속·중복 ref 를 자동 검증 |
+| `build_suttas.py` | SuttaCentral → 부처 8파일 `.txt`. GitHub 무인증 API 한도(시간당 60회) 때문에 트리 조회 4회로 경로를 받아 `scripts/.cache/` 에 둔다 |
+| `build_jsonl.py` | `.txt` → `_units.jsonl` 역파싱. JSONL 스키마의 단일 출처 |
+| `build_index.py` | JSONL → 청킹 → BGE-M3 임베딩 → 페르소나별 FAISS |
+| `search_test.py` / `eval_retrieval.py` | 검색 육안 점검 / 검색 A/B |
+| `eval_answers.py` | 답변 평가 (6절). **실제 LLM 호출** |
 
-실행 순서: `build_jsonl.py` -> `build_index.py` -> `search_test.py`
-(코퍼스 `.txt` 가 이미 있으므로 `build_*.py` 두 개는 평소 쓸 일이 없다)
+순서: `build_jsonl.py` → `build_index.py` → `search_test.py`. BGE-M3 는 질의 접두사("Represent this sentence…")를 붙이지 않는다.
 
-**BGE-M3 는 질의용 접두사가 필요 없다.** bge-v1.5 계열처럼 "Represent this sentence..." 를 붙이면 안 된다.
+**Gutenberg 파싱 함정**: ① 목차가 모든 제목을 반복한다 — 제목은 0열에서 시작하므로 좌측 공백을 보존한 채 매칭 (Ecce Homo 는 목차도 0열이라
+본문 기준으로 먼저 자른다) ② `[Footnote: ...]`·`[FOOTNOTE: ...]` 가 문장 중간에 있다 — 줄 단위로 건너뛰면 아포리즘 17개가 사라진다.
+전체 텍스트에서 `\[Footnote.*?\]` 를 `re.S | re.I` 로 지운다 ③ 절 번호 표기가 섞인다(`1.` 단독 줄 / `1. 본문` / `278.--본문`, `237A.`)
+④ 구형 파일은 `*** END ***` 앞에 `End of Project Gutenberg's ...` 줄이 또 있다 ⑤ CRLF·곡선 따옴표는 매칭보다 먼저 정규화한다.
+SuttaCentral 은 염처경의 범위 키(`mn10:18-23.1` → 시작 번호), 모음집마다 다른 제목 줄 위치(마지막 비어 있지 않은 `0.x` 가 제목)에 주의.
 
-## 11. 다음 단계 (2026-09-16 기준)
+## 4. 백엔드
 
-여기까지 완료: 저장소·Git, 코퍼스 7파일(.txt + _units.jsonl), 페르소나별 FAISS 인덱스,
-FastAPI 백엔드 **동작 확인 완료** (9.1절).
+### 4.1 모듈
 
-1. ~~백엔드 동작 확인~~ — 완료. **실행은 VS Code 에서 F5** (`.vscode/launch.json`). 인터프리터·`PYTHONUTF8`·
-   작업 폴더가 다 박혀 있고 서버가 뜨면 `/docs` 가 자동으로 열린다. 셸에서 직접 띄우려면 6.8 의 함정을 볼 것.
-   LLM 은 로컬(2.3 프리셋 1). Ollama 서버가 안 떠 있으면 `"D:\Program Files\Ollama\ollama.exe" serve`
-2. **프롬프트 조정** — 단, 판정은 프리셋 2(Gemini) 로만. 로컬 결과로 프롬프트를 고치지 않는다 (6.11)
-   — 이미 한 것: NO_CONTEXT 교체(6.9). 남은 것: A1·E1 잘림/사고 누출(9.2), Gemini 에서 재현 후 처리
-   (`app/personas.py` 하나만 고치면 된다. 답변 품질은 대부분 여기서 결정된다)
-3. **코퍼스 확장 (2026-09-18 결정, 현재 여기)** — 테스트를 더 돌리기 전에 **데이터를 먼저 늘린다.**
-   - ~~예수: 마태복음 1권뿐 -> 추가~~ — 2026-09-18 마가·누가 완료
-   - ~~부처: 코퍼스 미선정 -> 선정부터~~ — 2026-09-19 경장 8종 완료 (4절·6.20). 인덱스까지 생성
-   - **남은 것**: 부처 페르소나 첫 호출(사용자 지시 시) -> 답변을 불교 아는 쪽에서 교차 검증 -> 16문항에 부처 문항 추가해 재측정
-   - 코퍼스가 바뀌면 검색 결과가 바뀌므로 **그 전의 품질 측정치(9.2~9.5)는 기준선으로만 쓴다**
+```
+backend/app/
+├─ config.py      .env 를 읽는 설정 하나 (pydantic-settings). 코드에 키를 넣지 않는다
+├─ main.py        FastAPI 엔드포인트 (4.2)
+├─ rag.py         분류 → 검색 → 프롬프트 조립 → LLM 호출 → 규칙 검사 → (위반 시) 재생성 (4.3)
+├─ personas.py    페르소나 정의와 시스템 프롬프트 (4.6). 답변 품질은 대부분 여기서 정해진다
+├─ retriever.py   FAISS 검색. 임베딩 모델은 프로세스당 1회, 서버 기동 때 미리 로딩
+├─ concepts.py    개념어 사전 — 검색어에만 원어를 덧붙인다 (4.4)
+├─ guard.py       답변 규칙 검사. 검사만 하고 고치지는 않는다 (4.7)
+├─ llm.py         프로바이더 팩토리. .env 의 LLM_PROVIDER 하나로 교체
+├─ glossary.py    답변 속 경전 용어·호칭의 뜻 (각주용 고정 표, LLM 안 씀)
+├─ works.py       작품명 한글 표기 고정 표 ("THE GOSPEL ACCORDING TO MATTHEW" → "마태복음")
+├─ plans.py       요금제와 사용자별 하루 사용량 (SQLite)
+├─ auth.py        Firebase ID 토큰 검증, 개발자 확인(ADMIN_USERS)
+├─ reports.py     대화 신고 저장 (SQLite)
+└─ static/chat.html  개발용 채팅 테스트 화면 (GET /chat) — 배포 전 삭제
+```
 
-4. **Flutter 앱 (Android) — 2026-09-19 `mobile/` 생성 완료 (13절). 현재 여기.** ~~`flutter create mobile` 부터.~~ 화면 두 개(페르소나 선택 / 채팅)와 `http` 패키지로 `/ask` 호출.
-   에뮬레이터에서 PC 의 localhost 는 `127.0.0.1` 이 아니라 **`10.0.2.2`** 다.
-   실기기는 같은 Wi-Fi 에서 PC 의 LAN IP + Windows 방화벽 인바운드 허용.
-   서버 주소는 앱 안에서 바꿀 수 있게 만든다 (에뮬레이터·실기기·Windows 가 각각 다르다)
-5. **Windows 데스크톱 버전** — 4 가 끝난 뒤. 같은 코드베이스, `flutter create` 시 `--platforms=android,windows` 로 두 플랫폼을 함께 생성해 둔다.
-   빌드 전에 Visual Studio 의 C++ 데스크톱 워크로드를 채워야 한다 (1절). Windows 에서는 서버 주소가 `localhost:8000`
+### 4.2 API
 
-## 12. 미해결 과제
+**앱은 `{persona, question}` 만 보내고 검색·프롬프트·LLM 호출·키 보관은 전부 서버가 한다.** APK 는 압축을 풀어 문자열을 뽑을 수 있어
+앱에 넣은 키는 공개된 것과 같고, BGE-M3(5억대 파라미터)와 FAISS 는 공식 모바일 바인딩이 없어 폰에서 검색할 수 없다.
 
-### RAG
-- ~~부처 페르소나 코퍼스 미선정~~ — 2026-09-19 완료 (6.20). 첫 2문항은 코퍼스 대조 통과. **불교 쪽 사람의 교차 검증은 아직**.
-  용어 표(`glossary.py` 45개)는 내가 쓴 것이라 불교 용어에 밝은 사람의 검토가 필요하다
-- 부처 답변에 마크다운 줄바꿈(문장 끝 공백 2개)이 섞여 나올 수 있다 (6.20 첫 호출). guard 에 넣을지, 앱에서 정리할지 미정
-- 부처 인덱스 최대 청크 645 토큰 (설정 640 초과). 대반열반경의 긴 문단 하나. 실제 피해는 없으나 분할 로직이 상한을 엄격히 지키지 않는다는 뜻
-- ~~예수 코퍼스가 마태복음 1권뿐~~ — 2026-09-18 마가·누가 추가 (2.3만 -> 6.5만 단어). 요한복음은 문체가 달라 제외
-- 페르소나별 분량 불균형 (니체 29.6만 / 부처 12.0만 / 예수 6.5만 단어). 인덱스가 분리돼 있어 검색은 섞이지 않는다
-- **[신규] 복음서 청킹이 비유(pericope)를 자른다.** 절이 20단어 안팎이라 512 토큰까지 이어 붙이는데,
-  그 경계가 비유 경계와 무관하다. 실측: 한 청크가 중앙값 15절(최대 22절)을 걸치고,
-  **탕자 비유(눅 15:11~32)가 `15:1~15:16` / `15:17~15:32` 두 청크로 갈린다.**
-  앞 청크에는 잃은 양·잃은 드라크마 비유까지 섞여 있다.
-  실제로 「탕자는 왜 돌아왔습니까?」 질문에 탕자 청크가 상위 3위 안에 들지 못했다 (삭개오·군대귀신·엠마오가 잡힘).
-  니체는 저자가 매긴 절이 곧 의미 단위라 이 문제가 없었다. **복음서는 비유 단위 분할이 필요하다** — 미해결
-- 마가·누가 추가로 검색 결과가 바뀌었다. 9.2~9.6 의 예수 페르소나 측정치는 무효다. 재측정 필요
-- 니체 코퍼스는 6작품으로 **수집 완료**
-- ~~최대 토큰이 640 이하인지는 아직 안 쟀다~~ — 2026-09-19 확인: 니체 640, 예수 512, 부처 645 (9절)
-- 검색 품질은 질문 3개로만 육안 점검했다 (9.1절). 질문을 늘려 다시 볼 것
-- `sources` 에 같은 `ref` 가 두 번 나올 수 있다 (AC 1:57 처럼 640 토큰을 넘어 쪼개진 절). 앱에서 합쳐 보여줄지 미정
+| 엔드포인트 | 내용 |
+|---|---|
+| `POST /ask` | `{persona, question}` → `{answer, grounded, safety, retries, sources[], glossary[], usage}`. 앱이 보내는 것은 이 둘뿐 |
+| `GET /health` · `GET /personas` | 상태 · 페르소나 목록 |
+| `GET /usage` | 오늘 사용량 (횟수를 올리지 않는다) |
+| `GET /me` | `{user_id, admin}` |
+| `POST /reports` · `GET /reports` | 대화 신고 저장 · 목록 (목록은 개발자만, 아니면 403) |
+| `GET /chat` | 개발용 브라우저 채팅 화면. 인증 없이 LLM 을 부르므로 **배포 전 삭제** |
 
-### 백엔드 / 앱
-- `LLM_MODEL=gemini-3.6-flash` 로 확정 (6.6절). 무료 티어 한도는 아직 안 부딪혔다 — 부딪히면 429 의 `quotaValue` 기록할 것
-- `MIN_SCORE=0.45` — 질문 4개 기준이라 근거가 약하다 (9.1절)
-- 응답 지연이 10~35초다 (전부 LLM 호출). 앱에 스트리밍을 넣을지, 더 빠른 모델(flash-lite)로 갈지 미정
-- **A1·E1 잘림/사고 누출** (9.2절) — 로깅·거부 처리·`LLM_MAX_TOKENS=4096` 은 반영(6.12). Gemini 에서 재현해 원인 확정은 아직
-- **보류**: ① 프리셋 2 를 `LLM_THINKING_LEVEL=minimal` 로 전환 (6.17) ② 로컬 온도 0.4 -> 0 측정 (6.16)
-  ~~③ guard 한자 검사~~ (6.19 에서 추가)
-- **6.19 재작성 프롬프트 미검증** — 니체·예수 각 1회 호출로 확인 후, 새 지표(논지 일치·인용 적합성·발화자 정합)로
-  다른 세션에서 채점. 코퍼스에 답이 없는 질문을 섞어 "모르겠다"가 나오는지도 볼 것
-- **평가 지표 교체** — "근거 이미지 적중률"은 폐기(6.19). 어휘 출처만 세고 논지 방향을 못 본다
-- **6.12 프롬프트를 Gemini(프리셋 2)로 재검증** — 구조가 크게 바뀌었다. 하루 20요청이라 16문항 한 번이 하루치
-- `MIN_SCORE` 를 0.50 으로 올리자는 의견이 있었으나 **보류**: 예수 코퍼스는 관련 질문도 0.46~0.54 에 몰려 있어
-  (A6 돈 걱정 0.466, D2 0.518) 0.50 이면 정상 질문이 근거 없음으로 떨어진다. 니체는 0.54~0.61. 올리려면 페르소나별 임계값이 먼저
-- **LLM 무료 할당량 하루 20요청** (6.10절) — 프로바이더 결정 전까지 품질 점검을 반복할 수 없다.
-  로컬(6.11절)은 파이프라인 회귀용으로만 쓸 수 있다. 프롬프트·안전 검증용 모델은 아직 없음
-- 예수 코퍼스 청킹: 마 6:25–34 가 두 청크로 갈라짐. 장(章) 단위 묶음이라 절 경계에서 끊기는 사례가 더 있을 수 있음
-- CORS 가 `allow_origins=["*"]` 로 열려 있다. 배포 전 반드시 좁힐 것
-- 개발용 채팅 테스트 화면 `GET /chat` (9.8) — 배포 전 반드시 지울 것
-- 신고(`reports.db`)는 사용자의 질문·답을 담는다. 배포 전 보관 기간·개인정보 처리방침에 넣을 것. 신고 처리(완료 표시·삭제) 기능은 없다
-- 대화 이력 유지 방식 미정 (매 요청 stateless vs 세션)
-- 배포처 미정 — 개발 중엔 로컬, 배포 시 클라우드 이전 예정. 이전 시 GPU 없는 환경의 임베딩 처리 방법 재결정 필요
-- ~~앱 인증·사용량 제한 미설계~~ — 사용량 제한 9.7, 로그인 13절 (둘 다 2026-10-10). 요금제 가격·pro 결제 방식(월 구독 / 크레딧)은 미정
-- **Firebase 프로젝트 `philo-rag-ef4be` 생성됨 (2026-10-10, 사용자).** 집 PC `mobile/android/app/google-services.json` 배치 확인 (패키지 일치).
-  집 PC `.env` 에 `FIREBASE_PROJECT_ID=philo-rag-ef4be`, **`AUTH_REQUIRED=false` — 출시 전까지 false 로 둔다 (사용자 결정 2026-10-10)**.
-  두 번째 PC 는 json·`.env` 둘 다 아직
-- ~~받은 `google-services.json` 에 `oauth_client` 가 비어 있다~~ — **해결 (2026-10-10 13:34)**. 원인은 Authentication 에서 **Google 로그인을
-  켜지 않은 채** 받은 것 (SHA-1 은 이미 등록돼 있었다). Google·이메일/비밀번호를 켠 뒤 다시 받으니 1,325바이트, `oauth_client` 에
-  type 1(Android, 집 PC SHA-1 `26226fed…`) + type 3(웹) 이 들어왔다. Firebase 콘솔 새 메뉴에서 Authentication 은 **왼쪽 "보안"** 아래에 있다.
-  google-services 플러그인이 적용된 첫 빌드 성공, `default_web_client_id` 리소스 생성 확인 (google_sign_in 이 이걸 serverClientId 로 쓴다).
-  **두 번째 PC SHA-1 을 추가하면 json 을 다시 받아 두 PC 모두 바꿔 넣을 것** — Android OAuth 클라이언트는 등록된 SHA-1 마다 하나씩 들어간다
-- **기기 확인 (2026-10-10, 에뮬레이터)**: 앱 데이터를 지우고 켜니 `FirebaseInitProvider: FirebaseApp initialization successful` →
-  소개 화면 → "시작하기" → 로그인 화면 (Firebase 설정 전 경고 없음 = 로그인 켜짐). **실제 로그인은 아직 안 해 봤다** `[확인필요]`.
-  에뮬레이터에서 구글 로그인을 하려면 기기 설정에 구글 계정이 있어야 한다
-- **출시 때 `AUTH_REQUIRED=true` 로 바꿀 것.** true 면 토큰 없는 요청은 401 — 브라우저 `/chat` 테스트 화면(9.8)과 앱의 "로그인 없이 계속(개발용)" 이 질문을 못 보낸다
-- **Apple 로그인은 Apple Developer Program(연 $99) 가입이 있어야 켤 수 있다.** iOS 출시 계획이 없어 필수는 아니다 — 가입 전까지 버튼은 오류 문장을 띄운다
-- 로그인 도입 전에 폰에 저장된 대화(`chats/<persona>.json`)는 계정별 폴더로 옮기지 않았다 (시험 데이터라 버림)
-- 이메일 가입은 인증 메일을 보내지 않는다 — 남의 이메일로도 가입된다. 필요하면 `sendEmailVerification` 을 붙일 것
+- `sources[]` 는 `chunk_id, work, work_ko, ref, title, score` — **구절 본문은 보내지도 번역하지도 않는다** (사용자 결정 2026-09-22).
+  앱은 "마태복음 3:1~3:15" 처럼 한글 작품명 + 위치만 보여준다. 작품을 더하면 `works.py` 표도 늘린다 (`tests/test_sources.py` 가 검사)
+- LLM 프로바이더 오류(404·429·503 등)는 **502 + 원문 메시지**. 인덱스를 만든 임베딩 설정과 다르면 서버가 기동 때 에러를 낸다
+- CORS 가 `allow_origins=["*"]` 다 — 배포 전에 좁힌다
 
-## 13. Flutter 앱 (2026-09-19 시작)
+### 4.3 질문 처리 흐름 (`rag.answer`)
 
-`flutter create mobile --platforms=android,windows --org com.philorag --project-name philo_rag` 로 생성.
-패키지명 `com.philorag.philo_rag` (Play 스토어 등록 후엔 못 바꾼다 — 바꿀 거면 지금).
+1. **분류** (`_classify`) — 위기 정규식 `SAFETY_PATTERNS` 에 걸리면 호출 없이 위기. 아니면 LLM 한 번(`CLASSIFY_PROMPT`, 철학자 이름 포함)으로
+   여섯 갈래. 모르는 답이 오면 "가르침"(답할 질문을 놓치는 쪽이 더 나쁘다). 위기가 아닌데 사이비 이름 정규식 `CULT_PATTERNS` 에 걸리면 미혹
+2. **분류별 처리**
 
-**역할 분담 (사용자 결정)**: UI 는 Codex, 기능(API 호출·상태·설정 저장)은 Claude. 충돌을 피하려고 파일을 나눈다:
+| 분류 | 기준 (요지) | 처리 |
+|---|---|---|
+| 위기 | 쓴 사람 **본인이** 죽고 싶다·살기 싫다·자해처럼 자기 생명에 관한 말을 한다. 걱정·불면·스트레스·슬픔만으로는 아니다. 생명에 관한 말인데 확실하지 않으면 위기 | 검색하지 않는다. 사람이 쓴 고정 안내 `SAFETY_NOTICE`(자살예방 상담전화 109) + 모델의 두세 문장 |
+| 미혹 | 어떤 사람·단체가 재림 예수·메시아·선지자·구원자인지, 따라도 되는지 묻는다 (성경 속 인물, 재림 자체는 아님) | 검색 대신 문구로 고른 고정 구절(`retriever.find`) + `cult_line`. 예수는 답에 "거짓 선지자"가 없으면 재생성 |
+| 행적 | 자기 삶·겪은 일 | 구절 + `HISTORY_NOTE` (겪은 일로 1인칭, 기록·성경에 무엇이 적혔는지 말하지 않음) |
+| 가르침 | 그 사람이 가르친 주제 | `MIN_SCORE` 이상 구절로 답한다. 하나도 없으면 가장 가까운 3개로 |
+| 토론 | 의견이 갈리는 현대 문제 (진화론 등) | 코드가 첫 문장(`open_line`)을 붙이고 `DEBATE_TEMPLATE` — "세상은 … 그러나 나는". 0.40 이상 "가까운 구절" 최대 3개는 모델에게만 (sources 엔 없음). 온도 0.7 |
+| 잡담 | 취향·일상 (점심 메뉴, 포켓몬) | 코드가 첫 문장을 붙이고 `CHAT_TEMPLATE` — 찬반 없이 한두 문장. 구절 없음. 온도 0.7 |
+
+3. **생성 + 검사** — guard 가 위반을 찾으면 무엇을 어겼는지 알려 주고 다시 쓰게 한다 (`MAX_RETRIES` 3).
+   대화 형식으로 이어 붙인다: `[System, Human(요청), AI(실패한 답), Human(지적)]`
+4. **마무리** — 위기면 고정 안내를 앞에, 토론·잡담이면 `open_line` 을 앞에 붙인다. 행적·가르침인데 모델이 끝내 `open_line` 첫 문장으로
+   시작하면 근거 없음으로 표시한다 (`_declined`, `grounded=false`, `sources=[]`)
+
+**`open_line`** (사람이 쓴 고정 문장, `personas.py`): 예수 "이는 내가 공생애 동안 가르친 바가 아니니라." / 니체 "이것은 내가 책에서 다룬 문제가 아니다." /
+부처 "그대여, 이것은 내가 설한 법이 아니다." — 지어낸 근거가 아니라 그 사람의 관점에서 추론한 답임을 듣는 사람이 알게 한다.
+반대 의견은 "세상 사람들의 생각"으로 소개하고 "그러나 나는" 으로 자기 가르침을 말한다 — 교리와 어긋나는 생각을 자기 것으로 편들지 않게 (마 5:21 의 꼴).
+
+**사이비 고정 구절** (한국어 질문으로는 마 7:15 가 상위 5위에 안 잡혀 본문 문구로 찾는다):
+
+| 페르소나 | 구절 | `cult_line` |
+|---|---|---|
+| 예수 | 마 7:15, 24:23~24, 막 13:21~22 | "거짓 선지자들을 삼가라"고 분명히 말하라 |
+| 니체 | 차라투스트라 「베푸는 덕」 22:49, 이 사람을 보라 「나는 왜 운명인가」 14:1 | 그런 자를 따르지 말고 그대 자신을 찾으라 |
+| 부처 | 깔라마경 | 스승을 자처하는 자의 말이라도 해로운지 스스로 살피라 |
+
+`CULT_PATTERNS`: 이만희·신천지(사용자가 든 예) + 정명석·JMS·기독교복음선교회, 안상홍·장길자·하나님의교회세계복음선교협회, 문선명·한학자·통일교·
+통일가정연합, 유병언·구원파, 이재록·만민중앙, 신옥주·은혜로교회. "하나님의 교회"·"가정연합" 처럼 일반 낱말과 겹치는 형태는 넣지 않았다.
+목록에 없는 이름은 분류 호출이 잡는다. **목록은 사용자 검토 전** `[확인필요]`.
+
+### 4.4 검색
+
+- BGE-M3 + FAISS `IndexFlatIP` (벡터 정규화 → 내적 = 코사인). 청크가 2천 개 미만이라 근사 인덱스가 필요 없다. `faiss-cpu`
+- `top_k` 5, **`MIN_SCORE` 0.40**. 점수만으로는 답할 질문과 못 할 질문을 가를 수 없다 (예수: 「바람직한 삶」 0.448 vs 「점심 메뉴」 0.442) —
+  기준선은 낮게 두고, 답할 질문인지는 분류가 정한다
+- 집 PC 는 임베딩을 fp16 으로 올린다 (VRAM 2.2 → 1.1GB). fp32 인덱스와 순위가 같고 점수 차는 최대 0.0002
+- **개념어 사전** `concepts.py` — 질문에 개념어가 있으면 **검색어에만** 원어를 괄호로 덧붙인다. 모델이 보는 질문은 그대로다.
+  한글 음차·한자어("아모르파티", "열반")는 BGE-M3 가 영어 원어와 잘 잇지 못한다. 니체 23 · 부처 21 · 예수 10 항목 (합계 54).
+  원어는 코퍼스 번역본의 표기다 (차라투스트라의 Superman, 도덕의 계보의 resentment, Sujato 역의 extinguishment). 낱말 경계는 `glossary._word_boundary`
+  ("무상으로"·"사업"에는 안 걸린다). 서버 로그에 `검색어 보강: (...)` 이 찍힌다
+  - **항목은 「OO란 무엇입니까?」로 순위가 오르는 것을 재고 넣는다.** 아모르파티 26 → 1, 운명애 30위 밖 → 1, 열반 7 → 1, 사성제 30위 밖 → 3,
+    팔정도 25 → 1, 팔복 30위 밖 → 1, 오병이어 14 → 1. 뺀 것: 무아(붙여도 30위 밖), 탕자(비유가 두 청크로 갈려 있다)
+  - **"십자가" → "cross, Golgotha" 만 대가가 있다**: 구레네 시몬이 십자가를 대신 지는 막 15:20~38 이 「십자가를 지고 가실 때」 10 → 1,
+    「십자가의 무게」 21 → 1 이 되는 대신 「자기 십자가를 지라는 말은」의 마 16:24 청크가 2 → 3 (근거 5개 안). 시험한 7가지 표기 모두 그랬다
+
+### 4.5 LLM
+
+- **OpenAI `gpt-5.6-luna`**. 입력 $0.20 / 출력 $1.20 per 1M. 답 1개 약 $0.0009, 분류 호출을 더해 질문당 약 $0.001
+- **`OPENAI_REASONING_EFFORT=none` 필수.** 추론 모델이라 기본(medium)이면 화면에 안 보이는 추론 토큰이 출력 요금으로 청구된다.
+  none 이면 추론 토큰 0 이 실측됐고, temperature 도 쓸 수 있게 된다 (추론이 켜져 있으면 gpt-5 계열은 1 고정)
+- 온도 **0** (`LLM_TEMPERATURE`), 토론·잡담 **0.7** (`LLM_TEMPERATURE_OPEN`). `LLM_MAX_TOKENS` 4096
+- 접근 권한은 3단계다 — ① 프로젝트에서 모델 허용 ② Tier 1(누적 $5 결제) ③ 조직 신원 인증(보호 모델). 모델 목록 조회는 되는데 추론만 403 이면 ③ 대기 중
+- 토크나이저 `o200k_base` — `tiktoken` 로컬 계산과 실제 입력의 차이가 0.5% 다. **호출 없이 비용을 미리 계산해도 된다**
+- 다른 프로바이더는 `.env` 의 `LLM_PROVIDER`·`LLM_MODEL` 만 바꾸면 된다 (google · groq · openrouter · anthropic · ollama, 서버 재시작).
+  로컬 Ollama `qwen3.5:9b`(`OLLAMA_REASONING=false` 필수)는 개발용이다 — 말투 위반이 20% 남아 배포 품질이 아니다. 두 번째 PC 에서는 쓰지 않는다.
+  `gpt-4o-mini` 는 같은 구절을 받고도 구절 내용을 하나도 안 쓰고 일반론으로 채워 쓸 수 없다
+- langchain-core 1.x 는 `resp.content` 가 블록 리스트일 수 있다 — **`resp.text`** 를 쓴다. `max_tokens` → `max_completion_tokens` 변환은 langchain 이 한다
+- `[확인필요]` gpt-5.6 출력 토큰 과다 청구 버그 제보 (community.openai.com) — effort none 이면 추론 토큰이 없어 영향이 없을 것으로 본다. 대시보드로 확인
+
+### 4.6 프롬프트 (`personas.py`)
+
+- 구성 순서는 **정체성 → 말투 → 공통 규칙**. 시스템 프롬프트는 페르소나당 300~400 토큰. 사용자 메시지는 `구절: … 질문: …` 재료만
+- 말투: 니체 `~다/~라/~는가`(사극체 금지) · 예수 개역 성경 어투(`~하라/~하리라/~느니라`, 상대는 "너") ·
+  부처 초기불전연구원 니까야 역본 어투, 호칭은 "그대여"로 통일 (경전 호칭 "장자여"는 부유한 재가 신도 전용이라 임의로 쓰면 어색하다)
+- 공통 규칙: 1인칭 · 구절 안에서 · **논지 방향을 뒤집지 않는다** · 인용 맥락·발화자·경험을 구분한다(차라투스트라의 말은 니체 본인의 체험이 아니다,
+  예수는 겪지 않은 일을 겪었다고 하지 않는다) · 3~5문장 · 상담 안내는 먼저 꺼내지 않는다 · `open_line` 은 먼저 쓰지 않는다
+- **답변 예시를 넣지 않는다** — 예시 내용이 무관한 답에 그대로 복사된다. 말투 규칙의 예문도 복사된다
+- 부처는 갈애·무상·열반 같은 용어를 풀어 쓰지 않는다 — 앱이 `glossary` 로 각주를 단다 (부처 45개, 니체·예수 표는 비어 있음.
+  불교 용어에 밝은 사람의 검토 전)
+
+### 4.7 guard (`guard.py`)
+
+| 검사 | 내용 |
+|---|---|
+| 영어 | `[A-Za-z]{2,}` |
+| 한자·가나 | 있으면 위반 |
+| 3인칭 자칭 | `니체는/니체라면`, `예수님/예수께서`, `부처님/세존께서` 등. 이름 자체("나는 니체다")와 경전의 자칭 `여래는` 은 허용 |
+| 금지 어미 (문장 끝만) | 니체: 존댓말·요체·구어체·사극체 / 예수: `~습니다/~십시오`·요체 (`~리요` 는 성경체라 허용 — `(?<!리)(요\|죠)`) / 부처: 존댓말·요체·구어체 |
+| 겸양어 | `저는/제가` — 상대를 윗사람으로 대하는 꼴 |
+| "구절" | 시스템이 준 재료를 드러내는 말 ("그대가 제시한 구절들에 따르면") |
+| 출처 표기 | `(마태복음 25:35)`, `N장 N절` |
+| 길이 | 500자·3문단 이하 (안전 경로는 제외) |
+| `must_include` / `must_not_include` | 사이비 질문의 "거짓 선지자" / 코드가 붙이는 첫 문장 |
+
+**검사만 하고 고치지는 않는다** — 후처리로 문장을 바꾸면 근거와 어긋날 수 있다. 재생성 횟수는 응답의 `retries` 로 보인다.
+내용 오류(구절을 거꾸로 말하기, 인용 맥락)는 검사로 못 잡는다 — 사람이 코퍼스와 대조한다 (6절).
+
+### 4.8 요금제 · 로그인 · 신고
+
+- **요금제** (`plans.py`): `personal` 하루 5건 / `pro` 무제한. 가격·결제 방식은 미정이라 코드에 없다. `DEFAULT_PLAN` 하나를 모두가 받고 **기본값 `pro`**
+  - 사용자 구분: 로그인 토큰(`Authorization: Bearer <Firebase ID 토큰>` → `fb_<uid>`) → 없으면 앱이 만든 기기 UUID(`X-User-Id`) → 둘 다 없으면 `anonymous`
+  - `usage.db` 에 (사용자, 날짜)별 건수. 하루 경계는 한국 시간 자정(+9 고정). LLM 호출 **전에** 1건을 올리고(`BEGIN IMMEDIATE` — 동시 요청에도 한도를
+    못 넘는다) 답을 못 주면 돌려준다. 한도 초과는 429 + 안내 문장
+  - **한도에 걸려도 위기 정규식에 걸리면 상담전화 고정 안내는 나간다** (LLM 안 부름, 사용량 안 셈)
+- **로그인** (`auth.py`): Firebase ID 토큰을 Google 공개키로 검증한다 — 서비스 계정 키 없이 `FIREBASE_PROJECT_ID`(`philo-rag-ef4be`)만.
+  **`AUTH_REQUIRED=false` — 출시 전까지 false** (사용자 결정). true 면 토큰 없는 요청은 401
+- **신고** (`reports.py`): `POST /reports` 로 사유·질문·답이 `reports.db` 에 쌓인다. `GET /reports` 는 개발자만.
+  개발자는 `.env` 의 `ADMIN_USERS`(쉼표로 여럿) — 이메일은 토큰이 `email_verified` 일 때만 인정(이메일 가입은 인증 메일이 없어 남의 주소로도 가입된다),
+  또는 사용자 ID. `anonymous` 는 개발자가 될 수 없다. 집 PC `.env` 에는 설정했고 **두 번째 PC `.env` 는 아직**
+
+### 4.9 테스트
+
+`backend/tests/` — 가짜 LLM, API 호출 없음. `python -m pytest tests -q` (임베딩 로딩 포함 약 15초~1분). **72개.**
+`test_open.py`(분류 여섯 갈래·사이비·위기 우선·토론/잡담/행적/가르침 경로·"~리요") · `test_concepts.py`(사전·경계·"구절" 재생성) ·
+`test_sources.py`(작품명 한글 표·본문 미전송) · `test_plans.py`(한도·환불·위기 예외·/chat) · `test_auth.py`(토큰 검증) · `test_reports.py`.
+`conftest.py` 가 사용량·신고 DB 를 임시 파일로 돌린다.
+
+## 5. 앱 (Flutter, `mobile/`)
+
+`flutter create mobile --platforms=android,windows --org com.philorag --project-name philo_rag`. 패키지명 `com.philorag.philo_rag`.
+앱 이름 **"쉼표,"**. 패키지: `http`, `shared_preferences`, `path_provider`, `firebase_core`, `firebase_auth`, `google_sign_in`.
+상태 관리는 `ChangeNotifier` + `AnimatedBuilder`/`ListenableBuilder` (패키지 없음).
+
+### 5.1 구조
+
 ```
 mobile/lib/
-├─ main.dart          앱 진입. 라우팅만
-├─ api/               Claude — /ask, /personas 호출, 응답 모델 (AskResponse: answer/grounded/safety/retries/glossary/sources)
-├─ state/             Claude — 서버 주소 설정(SharedPreferences), 대화 상태
-└─ ui/                Codex — 화면·위젯. api/ 의 함수만 호출하고 http 를 직접 쓰지 않는다
+├─ main.dart        앱 진입. 테마·글씨 크기 반영
+├─ api/             client.dart (PhiloRagClient — /ask·/personas·/usage·/me·/reports, ApiException), models.dart (서버 응답 모델과 1:1)
+├─ state/           settings.dart (서버 주소·기기 ID·테마·글씨 크기), chat.dart (ChatController), chat_storage.dart, auth.dart, firebase_auth_backend.dart
+├─ data/            persona_profiles.dart (소개 탭의 고정 글)
+└─ ui/              화면·위젯. api/ 의 함수만 부르고 http 를 직접 쓰지 않는다
 ```
 
-**서버 주소** (환경마다 다르다. 앱 안에서 바꿀 수 있게):
-| 실행 환경 | 주소 |
-|---|---|
-| Android 에뮬레이터 | `http://10.0.2.2:8000` (에뮬레이터에서 PC 의 localhost) |
-| 실기기 (같은 Wi-Fi) | `http://192.168.0.10:8000` + 방화벽 인바운드 8000 (6.8) |
-| Windows 데스크톱 | `http://localhost:8000` |
+**서버 주소**: 에뮬레이터 `http://10.0.2.2:8000` (기본값) / 실기기 `http://192.168.0.10:8000` / Windows `http://localhost:8000`.
+디버그 빌드에만 설정 탭 "개발용 · 서버 주소"가 있다. **릴리스 빌드는 주소를 바꿀 수 없어 에뮬레이터에서만 서버에 붙는다.**
+`ask` 타임아웃 90초, 응답은 `utf8.decode(bodyBytes)` (한글).
 
-**환경 상태 (2026-09-19 실측)**:
-- `flutter devices`: Windows(desktop)·Chrome·Edge 만 잡힌다. **Android 에뮬레이터가 없다** — 시스템 이미지가 하나도 설치돼 있지 않다
-  (`Sdk/system-images` 폴더 자체가 없음). Android Studio -> Device Manager -> Create Device 에서 만들 것 (이미지 ~1.2GB 다운로드).
-  cmdline-tools 22 의 `sdkmanager` 로도 된다: `sdkmanager "system-images;android-36;google_apis;x86_64"` 뒤 `flutter emulators --create`
-- `flutter build windows` 는 **VS C++ 워크로드가 없어 실패** (1절). Windows 버전 단계에서 채운다
-- Android 실기기는 USB 디버깅을 켜고 연결하면 `flutter devices` 에 바로 뜬다. 에뮬레이터 없이 이걸로 시작해도 된다
-- ~~Android 빌드 자체(Gradle)는 아직 안 돌려 봤다~~ — 2026-09-20 첫 빌드 성공. Gradle 9.3.1 / Kotlin 2.4.0 / AGP 는 Flutter 템플릿 기본.
-  첫 `flutter build apk --debug` 는 다운로드 포함 2분 47초, 이후 30초 안팎
-- 에뮬레이터는 Android Studio Device Manager 에서 **Pixel 9 / API 36 (Google APIs x86_64)** 로 만들었다. `flutter devices` 에
-  `sdk gphone64 x86 64 (emulator-5554)` 로 뜬다. 만들기 전에 "Windows Hypervisor Platform is not enabled" 배너의 Enable 이 필요했다
+### 5.2 화면
 
-**첫 빌드에서 겪은 것 (2026-09-20)**:
-- **Kotlin 증분 컴파일 캐시 오류로 빌드 실패**: `:shared_preferences_android:compileDebugKotlin` 에서
-  `Could not close incremental caches … class-fq-name-to-source.tab` / `Storage … is already registered`.
-  `build/` 삭제, `gradlew --stop`, java 프로세스 전부 종료 후에도 같은 자리에서 재현됐다 (데몬 문제가 아니다).
-  **`android/gradle.properties` 에 `kotlin.incremental=false`** 를 넣으니 바로 성공. Kotlin 2.4.0 + Windows 조합의 문제로 보이며 원인은 미확인.
-  증분이 꺼져 있어 빌드가 조금 느리지만 프로젝트가 작아 체감은 없다
-- **평문 HTTP 허용 필수**: 개발 서버가 `http://` 라 `AndroidManifest.xml` 에 `android:usesCleartextTraffic="true"` 와
-  `INTERNET` 권한을 넣었다. Android 9+ 는 기본으로 평문을 막는다. **배포 시 https 로 바꾸고 이 속성을 지울 것**
-- **에뮬레이터에서 한글 입력이 안 된다** — 앱 문제가 아니다. PC 키보드는 키 코드로 전달돼 Windows 한글 IME 가 안 먹고,
-  에뮬레이터 Gboard 는 영어 자판만 켜져 있다. 에뮬레이터 설정 → 시스템 → 언어 및 입력 → 화상 키보드 → Gboard → 언어 → 한국어(2벌식) 추가.
-  급하면 PC 에서 복사해 질문칸에 길게 눌러 붙여넣기 (클립보드 공유됨). 실기기는 해당 없음
-- **Android Studio ▷ 가 `Unable to find suitable Visual Studio toolchain` / `App failed to start` 로 실패** (2026-10-10, 사용자가 "실행이 잘 안 된다"고
-  했던 것). 위쪽 기기 선택이 **"Windows (desktop)"** 이었다 — 에뮬레이터가 꺼져 있으면 Android 기기가 목록에 없어 Windows 가 골라진다.
-  집 PC 는 VS C++ 워크로드가 없어 Windows 빌드가 안 된다 (1절, Windows 버전 단계에서 설치). **에뮬레이터를 먼저 켜고**
-  (Device Manager ▶, 또는 `flutter emulators --launch Pixel_9`) 기기 목록에서 `sdk gphone64 x86 64` 를 고른 뒤 ▷. 집 PC 에뮬레이터 ID 는 `Pixel_9`
-- `taskkill /F /IM java.exe` 는 Git Bash 에서 `/F` 가 경로로 바뀌어 안 된다. PowerShell `Get-Process java | Stop-Process -Force` 를 쓴다
+첫 화면(켤 때마다. 아무 데나 누르면 넘어감) → **아래 탭 세 칸** `ui/main_tabs.dart`:
+- **대화** — 철학자 2열 바둑판(`persona_grid_screen.dart`). 서버가 켜지는 중이면 3초 간격 10번 재시도 후 "다시 시도". 누르면 대화창(`chat_screen.dart`)이 탭을 덮는 전체 화면으로 열린다
+- **소개** — 한 명씩 넘기는 슬라이드(`persona_intro_screen.dart`) → 상세(`persona_detail_screen.dart`: 사상·책). 일러스트는 위에 고정되고 글만 그 아래로 스크롤된다
+- **설정** — 테마(라이트/다크, 기본 다크) · 글씨 크기(작게 0.9 / 보통 1.0 / 크게 1.15 / 아주 크게 1.3, 기기 글꼴 크기 × 배율) · 계정 ·
+  오늘 사용량(`GET /usage`) · **결제 버튼은 비활성 "결제 (준비 중)"** · 개발자에게만 "신고 내역"
 
-**동작 확인 (2026-09-20, 에뮬레이터)**: 앱 → `http://10.0.2.2:8000` → `/health` `/personas` 성공. 세 페르소나(니체·예수·부처)가 화면에 떴다.
-`/ask` 는 아직 앱에서 안 눌렀다 (비용. 사용자가 직접 시험). 백엔드는 이 확인을 위해 셸에서 `uvicorn` 으로 띄웠고 평소엔 VS Code F5.
+**소개 글** (`persona_profiles.dart`, 서버·LLM 안 씀): 예수 인용은 코퍼스(KJV)와 대조한 것만 장절을 붙였다. 책 목록 ● 는 앱이 근거로 찾는 책, ○ 는 안 넣은 책.
+**예수 표기는 "예수 그리스도 · 기원전 4년경–기원후 30년경 · 유대 베들레헴"** (사용자 지적 2026-10-12. "나사렛 예수 · 갈릴리"는 나사렛을 성씨처럼 붙인 것이라 틀렸다.
+출생지는 마 2:1 "Bethlehem of Judaea"). 불교·신학 쪽 사람의 검토는 아직.
 
-**구현된 것 (`lib/`, Claude 담당분)**:
-- `api/models.dart` — `Persona / Source / GlossaryItem / AskResponse / HealthResponse`. 서버 Pydantic 모델과 1:1
-- `api/client.dart` — `PhiloRagClient(baseUrl)`: `health()`, `personas()`, `ask(persona, question)`. 오류는 `ApiException`
-  (`statusCode` null 이면 연결 실패, 있으면 서버 오류 + FastAPI `detail`). 응답은 `utf8.decode(bodyBytes)` 로 푼다 (한글).
-  `ask` 타임아웃 90초 (LLM 10~35초 + 재생성)
-- `state/settings.dart` — `SettingsStore`: 서버 주소를 SharedPreferences 에 저장. 기본값은 플랫폼별 (Android `10.0.2.2`, 그 외 `localhost`)
-- `state/chat.dart` — `ChatController`: 페르소나별 메시지 목록, `send()`, `isPending()`. 서버가 stateless 라 이력은 표시용이다
-- **요금제 (2026-10-10, 9.7)**: `SettingsStore.userId` — 첫 실행 때 UUID v4 를 만들어 저장(패키지 없이 직접 생성).
-  `PhiloRagClient(baseUrl, userId: …)` 가 모든 요청에 `X-User-Id` 를 붙인다. `AskResponse.usage` (`UsageInfo`: `planName`·`usedToday`·
-  `dailyLimit`·`remainingToday`·`unlimited`). 한도 초과는 `ApiException.isQuotaExceeded` (429), `toString()` 이 안내 문장 그대로라
-  `ChatController` 는 고칠 것 없이 오류 말풍선에 그 문장이 뜬다. "오늘 3/5" 같은 표시는 UI(Codex) 몫 — 마지막 답변의 `response.usage` 를 쓰면 된다
-- **대화 저장 (2026-10-10, 사용자 결정: 페르소나당 200개 / 지우기 기능 + 임시 버튼 / 위기 안내 대화도 저장)**:
-  `state/chat_storage.dart` — 페르소나마다 JSON 파일 하나를 **앱 전용 폴더**(`getApplicationSupportDirectory()/chats/<persona>.json`)에 둔다.
-  Android 는 `/data/user/0/com.philorag.philo_rag/files/chats/`(다른 앱 접근 불가), Windows 는 `%APPDATA%\com.philorag\philo_rag\chats\`.
-  `ChatController` 가 켤 때 `load()`, 질문을 붙인 직후와 답을 받은 뒤 저장한다(답을 기다리다 앱이 꺼져도 질문은 남는다).
-  임시 파일에 쓰고 바꿔치기해 반쯤 쓴 파일이 생기지 않게 했고, 깨진 파일은 그 페르소나만 건너뛴다.
-  200개는 **질문·답을 각각 1개로 센다**(= 질문 100번). 넘으면 가장 오래된 것부터 지운다. 오류 말풍선도 저장된다.
-  `clear(persona)` 는 화면·파일 모두 지운다. 임시 화면 오른쪽 위 휴지통 → 확인 창 → 삭제 (버튼 위치·모양은 Codex 몫).
-  응답 모델에 `toJson()` 을 붙여 저장한 답을 같은 `fromJson()` 으로 되읽는다. 패키지 `path_provider` 추가.
-  앱을 지우면 같이 지워지고, 기기 간에 옮겨지지 않는다 (동기화는 로그인 + 서버 저장이 있어야 한다).
-  **저장은 기억이 아니다** — 서버는 여전히 매 질문을 따로 받는다 (12절 "대화 이력 유지 방식 미정").
-  Android 자동 백업(템플릿 기본값 `allowBackup` 켜짐)에 이 폴더가 포함될 수 있다 `[확인필요]`.
-  검증: `mobile/test/chat_storage_test.dart` 5개 (근거·각주·사용량·위기 안내 왕복 / 200개 / 오류 / 지우기 / 깨진 파일). 기기 실측은 아직
-- **대화 하나 지우기 · 시크릿 모드 (2026-10-12, 사용자 결정)**:
-  - 말풍선을 **길게 누르면**(PC 는 오른쪽 클릭) 누른 자리에 메뉴가 뜬다 — **삭제 · 복사 · 대화내용 신고** (2026-10-12 사용자 결정, 우클릭 메뉴처럼).
-    복사·신고는 철학자의 답에만 있고, 질문·오류 말풍선은 삭제만. 복사는 **답 본문만**(용어 풀이·근거 구절 제외)
-  - 삭제를 고르면 확인 창("이 질문과 답을 지울까요?") 뒤에 **그 질문과 답을 함께** 지운다 (`ChatController.deleteExchange`).
-    질문을 누르든 답을 누르든 한 쌍이 지워지고 파일에도 반영된다. 답을 기다리는 마지막 질문은 못 지운다. 전체 지우기(휴지통)는 그대로.
-    "특정 대화"를 질문+답 한 쌍으로 해석했다 — 말풍선 하나만 지우게 바꾸려면 `deleteExchange` 의 범위만 고치면 된다
-  - **시크릿 모드** — 대화창 위쪽 **모자·안경 아이콘** (`ui/incognito_icon.dart`, 직접 그림 — 크롬 시크릿 모드처럼 해 달라는 사용자 요청.
-    처음의 눈 가림 아이콘은 "대화를 끄고 가리는 기능처럼 보인다"는 지적으로 바꿈). 켜면 **화면 전체가 어두운 테마**(`AppTheme.dark`)로 바뀌고
-    빈 화면 가운데 큰 아이콘과 "시크릿 모드" (`setSecret`). 켜면 저장된 대화 대신 **빈 대화**가 보이고("예수 · 시크릿", 안내 띠),
-    여기서 나눈 대화는 **폰에 저장하지 않는다**(메모리에만). 끄면(시크릿 대화가 있으면 확인 창) 또는 **대화창을 나가면 사라진다**.
-    시크릿 중의 지우기·전체 지우기는 시크릿 대화에만 작용한다. 답을 기다리는 중에는 켜고 끌 수 없다
-  - 서버는 원래 질문을 저장·로그하지 않는다 (사용 횟수만 센다, 9.7). 다만 답을 받으려면 질문이 서버와 LLM(OpenAI)으로 가는 것은 시크릿이어도 같다
-  - **대화내용 신고** (`ui/report_dialog.dart`) — 사유 하나: "{이름}의 사상과 맞지 않음", 폭력적인 발화, 혐오·차별 표현, 선정적인 내용,
-    사실과 다른 내용(없는 인용·잘못된 출처), 위험하거나 부적절한 조언, **기타(직접 입력 — 적어야 보낼 수 있다)**.
-    **대화 내용(질문과 답)이 확인을 위해 개발자에게 제공되는 것에 동의하는 체크박스** — 체크해야 보낼 수 있다 (사용자 결정 2026-10-12). 보내는 것: 사유·직접 입력·질문·답 + 근거 여부·근거 구절 위치·시크릿 여부 (`ChatController.report`)
-  - **신고 내역** (`ui/reports_screen.dart`) — 설정 화면의 **"개발자 · 신고 내역"**. 서버 `/me` 가 개발자라고 할 때만 보인다 (위 9절 ADMIN_USERS).
-    최근 신고부터, 누르면 직접 입력·질문·답이 펼쳐진다 (글 선택·복사 가능). 당겨서 새로고침
-  - 검증: `mobile/test/chat_delete_secret_test.dart` 5개 (질문/답 어느 쪽을 골라도 한 쌍 삭제·파일 반영 / 시크릿은 저장 안 함·끄면 사라지고 저장된 대화 복귀 /
-    시크릿 중 지우기는 시크릿에만 / 메뉴 → 삭제 → 확인 창 / 시크릿 표시·어두운 화면·끌 때 확인·나가면 끝남 /
-    메뉴 항목(답: 삭제·복사·신고, 질문: 삭제) / 복사는 답 본문만 / 신고 사유·기타 직접 입력·질문과 답 전송) 8개,
-    `main_tabs_test.dart` 에 신고 내역(일반 사용자에겐 안 보임 / 개발자는 목록·펼침) 2개. 앱 테스트 전체 43개 통과.
-    에뮬레이터에서 메뉴(질문: 삭제만 / 답: 삭제·복사·신고), 신고 창(취소), 시크릿 화면, 설정의 신고 내역(빈 목록) 확인 —
-    실제 대화는 지우지 않았고 신고·질문은 보내지 않음
-- ~~`ui/placeholder_home.dart` — 임시 화면~~ — 2026-10-10 지움. 아래 "화면 구성" 의 바둑판·대화창으로 대체
-- **화면 구성 (2026-10-10, 사용자 결정)**: 첫 화면(켤 때마다, 화면 아무 데나 누르면 넘어감, 버튼 없음) → 로그인(로그인돼 있으면 건너뜀) → **철학자 2열 바둑판**
-  (`ui/persona_grid_screen.dart`) → 누르면 **그 철학자의 대화창** (`ui/chat_screen.dart`, 뒤로 가면 바둑판).
-  예전 임시 화면 위쪽의 서버 주소 입력·"연결" 줄은 없앴다. 대신 ① 바둑판이 서버가 켜지는 중이면 3초 간격으로 10번까지 다시 묻고
-  (모델 로딩 20초 대응) 그래도 안 되면 "다시 시도" 버튼 ② 서버 주소는 **설정 탭의 "개발용 · 서버 주소"** — 디버그 빌드에만 있다 (실기기 LAN IP 용. 2026-10-12 바둑판 계정 메뉴에서 옮김).
-  대화창: 철학자 이름 + 뒤로 + 지우기(확인 창), 빈 대화엔 "OO에게 물어보세요." + 소개, 말풍선(용어 풀이·근거 구절 접힘·근거 없음 표시), 새 메시지 오면 맨 아래로.
-  검증: `mobile/test/persona_grid_test.dart` 3개 (2열·연결 줄 없음 / 누르면 대화창·질문·뒤로 / 서버 켜지는 중 재시도),
-  에뮬레이터에서 소개 → 터치 → 로그인 → 개발용 우회 → 바둑판 → 예수 대화창까지 화면 확인 (질문은 안 보냄)
-- **아래 탭 (2026-10-12, 사용자 결정)**: 로그인 뒤 홈은 `ui/main_tabs.dart` — 아래 `NavigationBar` 세 칸 **대화 · 소개 · 설정**.
-  탭 화면은 `IndexedStack` 이라 오가도 스크롤·슬라이드 위치가 남는다. **대화창과 소개 상세 페이지는 탭을 덮는 전체 화면**으로 열려
-  그동안 탭이 안 보인다 (사용자 요구 "대화에서는 탭 비활성"을 숨김으로 구현).
-  - **대화** = 위의 철학자 2열 바둑판 (그대로)
-  - **소개** (`ui/persona_intro_screen.dart`) — `PageView` 슬라이드, 한 화면에 한 명(옆 사람이 살짝 보임) + 아래 점 표시.
-    카드 = 일러스트(Codex 의 `PersonaVisual`) · 이름 · 한 줄 소개 · "사상과 책 보기". 누르면 `ui/persona_detail_screen.dart`:
-    생몰·한 줄 소개 → **사상**(요약 + 핵심 생각 4~6개) → **책**(쓴 책·관련 서적. ● 이 앱이 근거로 찾는 책 / ○ 근거에 안 넣은 책)
-    **일러스트는 위에 고정, 글만 스크롤** — 글이 일러스트 아래 경계에서 흐려지며 들어간다 (사용자 요청 2026-10-12. 처음엔 일러스트까지 같이 올라가 사라졌다).
-    일러스트 높이는 화면 높이의 28% (160~260)
-  - 글은 **앱에 넣은 고정 글** `lib/data/persona_profiles.dart` (서버·LLM 안 씀, 서버가 꺼져 있어도 보인다). 내가 썼다.
-    원칙: 예수 소개의 성경 인용은 **코퍼스(KJV) 구절과 대조한 것만** 장절을 붙였다 (막 1:15, 마 22:37~39, 막 12:30~31, 마 5:44, 마 18:22,
-    마 25:40, 마 6:25~34, 마 13:3, 눅 10:30~37, 눅 15:11~32). 책 목록의 ● 는 4절 수집 현황과 같다 — 니체 6권, 마태·마가·누가, 부처 8경.
-    ○ 는 니체의 『비극의 탄생』『즐거운 학문』 등, 요한복음, "그 밖의 니까야". 불교·신학 쪽 사람의 검토는 아직
-    **예수 표기는 "예수 그리스도 · 기원전 4년경–기원후 30년경 · 유대 베들레헴"** (사용자 지적 2026-10-12). 처음 쓴 "나사렛 예수 · 갈릴리" 는
-    나사렛을 성씨처럼 붙인 것이라 틀렸다 — 예수에게는 성씨가 없고, 나사렛은 대부분의 삶을 산 곳이다. 출생지는 마 2:1 "Bethlehem of Judaea".
-    "유대 나사렛" 도 후보였으나 나사렛은 갈릴리 땅이라 틀린다 (눅 2:4 "from Galilee, out of the city of Nazareth, into Judaea ... Bethlehem")
-  - **설정** (`ui/settings_screen.dart`) — 화면(테마 라이트/다크 · 글씨 크기 작게 0.9 / 보통 1.0 / 크게 1.15 / 아주 크게 1.3),
-    계정(이름·로그인 방식·이메일, 로그아웃 확인 창), 사용량(요금제 · "오늘 n / 5건 사용 · k건 남음" 또는 "무제한", 설정 탭을 열 때마다
-    `GET /usage` 로 다시 읽음, 새로고침 버튼), **결제 버튼 — 비활성 "결제 (준비 중)"** (사용자 결정: 기능은 나중에), 디버그 빌드에만 개발용 서버 주소
-  - 테마·글씨 크기는 SharedPreferences `theme_mode`("light"/"dark", 기본 다크) · `text_size` 에 저장. `main.dart` 가 `MaterialApp` 을
-    `ListenableBuilder(settings)` 로 감싸 바로 바뀐다. 글씨 크기는 **기기 글꼴 크기 × 앱 배율** (`MediaQuery.textScaler`)
-  - 라이트 테마에서 바둑판 그림이 흐렸던 것(옛 그림 처리가 다크 배경 전제)은 **Codex 가 일러스트를 바꾼 뒤 해소** — 2026-10-12 에뮬레이터에서
-    라이트로 바둑판·상세 페이지 모두 선명함을 확인. 바둑판 카드에 이름 글자가 없는 것은 Codex 디자인 그대로
-  - 검증: `mobile/test/main_tabs_test.dart` 5개 (탭 세 개 / 대화창에서 탭 숨김·뒤로 오면 다시 보임 / 슬라이드·상세 페이지 /
-    테마·글씨 저장·계정·사용량·결제 비활성·로그아웃 / 다시 켜도 설정 유지. 상세 페이지는 예수 표기와 스크롤해도 일러스트 위치가 그대로인지까지 본다). 앱 테스트 전체 33개 통과.
-    에뮬레이터에서 탭 → 소개 슬라이드(니체 → 예수) → 예수 상세(사상·책) → 설정 → 라이트·크게 전환까지 화면 확인 (질문은 안 보냄)
-- `ui/source_tile.dart` — 근거 구절 목록 위젯 (2026-09-22, 사용자 요청으로 Claude 가 작성). `SourcesSection` 은
-  **"답의 근거 N곳" 한 줄만 보이고 기본은 접힘**, 누르면 "마태복음 3:1~3:15" (한글 작품명 + 위치) 칩이 펼쳐지고 다시 누르면 접힌다.
-  **칩은 누를 수 없고 본문도 보여주지 않는다** (사용자 결정). 서버 호출 없음.
-  2026-10-14 Codex 디자인 수정 때 머리줄이 "원전 출처"로 바뀌고 **접기가 빠져 칩이 늘 펼쳐져 있었다** — 사용자 지적으로 접기를 되살리고
-  이름을 "답의 근거"로 바꿨다 (사용자 요청 "원전 출처보다 괜찮은 말". 같은 칸의 용어 풀이와 겹치지 않고, 답이 무엇에 기댔는지 바로 읽히는 말로 골랐다).
-  `ExpansionTile` 에 `PageStorageKey` 를 주면 안 된다 — 안쪽에 스크롤 위젯이 있으면 저장 슬롯이 겹쳐 형 오류가 난다 (위젯 테스트로 재현했었다).
-  지금은 `ExpansionTile` 대신 `InkWell` 머리줄 + `setState` 로 접는다 (Codex 의 칩 디자인을 그대로 두려고)
-- **한글 낱말이 줄 끝에서 쪼개지지 않게 (2026-10-12, 사용자 요청 — "아모르파 / 티" 처럼 끊기지 않게)**: Flutter 는 한글을 글자 단위로
-  줄바꿈하고 CSS `word-break: keep-all` 같은 설정이 없다 (3.47 SDK 에서 확인). `lib/ui/keep_words.dart` 가 띄어쓰기가 있는 글의 각 낱말
-  글자 사이에 보이지 않는 단어 잇기 문자(U+2060)를 넣어 띄어쓰기에서만 줄이 바뀌게 한다.
-  **화면 파일은 Flutter 의 Text 대신 이 Text 를 쓴다** — `import 'package:flutter/material.dart' hide Text;` + `import 'keep_words.dart';`.
-  **새 화면을 만들 때도 이렇게 할 것 (Codex 포함).** 이렇게 하면 기존·새 Text 가 모두 자동으로 적용된다. SelectableText 는 `keepWords(...)` 로 감싼다.
-  한 낱말짜리(버튼·탭 이름)와 25자 넘는 덩어리(주소 등 — 줄보다 길면 끊겨야 함)는 그대로, 화면 낭독기에는 원래 글, 대화 복사는 원래 문자열(`bubbleText`).
-  입력칸(TextField)의 글은 손대지 않는다 (사용자가 친 글에 문자를 넣을 수 없다). `Text.rich` 는 그대로 넘긴다 (짧은 제목에만 쓰임).
-  테스트는 `find.text` 대신 `test/text_finders.dart` 의 `findText`/`findTextContaining` (그 문자를 빼고 비교).
-  검증 `test/keep_words_test.dart` — 좁은 폭에서 줄이 띄어쓰기에서만 바뀌고, 처리하지 않은 글은 낱말 가운데서 끊긴다는 것까지 잰다. 앱 테스트 전체 45개.
-  에뮬레이터에서 대화창·첫 화면·로그인 화면 확인 (빈 네모 같은 깨진 글자 없음)
-- **안 쓰는 자산 정리 (2026-10-14)**: 글꼴 HiMelody(12.0MB)·NanumPenScript(3.1MB)·Jua(2.0MB)와 옛 일러스트 `philosophers-monochrome-v1.png`(2.6MB) —
-  코드 어디서도 안 쓰는데 앱에 들어가던 약 20MB 를 `pubspec.yaml` 과 저장소에서 지웠다 (라이선스 OFL 파일도 같이). 쓰는 글꼴은 고운바탕 2종(16MB)뿐.
-  **release APK 59.3MB** (모든 CPU 종류를 담은 단일 APK. `--split-per-abi` 나 한글 글꼴 서브셋으로 더 줄일 수 있다 — 미적용).
-  `output/illustration-samples/` 의 v1 은 그림 출처 기록이라 남겼다
-- **디자인 수정 요청서 (2026-10-14)**: [`docs/design-requests-2026-10-14.md`](docs/design-requests-2026-10-14.md) — Codex 에게 넘길 다섯 가지.
-  ① 설정·메뉴·확인 창·신고 창·시크릿 화면을 브랜드 톤으로 ② 내 질문 말풍선 보라색(#7638FA) 제거 ③ **근거 출처를 접지 않고 칩으로**(본문은 여전히 안 보여줌)
-  ④ 바둑판 카드에 이름, 2열 유지하되 빈칸 없이 ⑤ 대화창에 철학자 초상·이름이 들어간 기다림 표시. 지켜야 할 key·규칙·완료 기준을 함께 적었다
-- 패키지: `http`, `shared_preferences`. 상태 관리 패키지(provider/riverpod)는 안 썼다 — `ChangeNotifier` + `AnimatedBuilder` 로 충분한 규모.
-  Codex 가 UI 를 만들 때 원하면 그때 붙인다
+### 5.3 대화창
 
-### 로그인 (2026-10-10)
+- **답 말풍선**: 본문 · 용어 풀이(부처) · **"답의 근거 N곳"** 한 줄 — 기본은 접혀 있고 누르면 "마태복음 3:1~3:15" 칩이 펼쳐진다 (`source_tile.dart`.
+  칩은 누를 수 없고 본문도 안 보여준다). 근거 없는 답은 따로 표시. 모델이 문장 끝에 넣는 마크다운 줄바꿈(공백 두 칸 + 줄바꿈)은
+  화면과 복사에서 정리한다 (`bubbleText`)
+- **열면 맨 아래** — `_jumpToEnd` 가 목록 끝이 더 늘지 않을 때까지 다시 내려간다 (긴 답이 뒤에 있으면 목록이 길이를 짧게 어림해 중간에서 열렸다.
+  `test/chat_scroll_test.dart` 가 고치기 전 코드에서 실패하는 것을 확인)
+- **저장** (`chat_storage.dart`): 페르소나마다 JSON 하나를 앱 전용 폴더(`getApplicationSupportDirectory()/chats/<계정>/<persona>.json`)에.
+  질문·답을 각각 1개로 세어 **200개**, 넘으면 오래된 것부터 지운다. 질문을 붙인 직후와 답을 받은 뒤 저장, 임시 파일에 쓰고 바꿔치기한다.
+  **저장은 기억이 아니다** — 서버는 매 질문을 따로 받는다. `[확인필요]` Android 자동 백업(`allowBackup`)에 이 폴더가 들어가는지
+- **말풍선 길게 누르기** (PC 는 오른쪽 클릭) — 누른 자리에 메뉴: **삭제 · 복사 · 대화내용 신고**. 복사·신고는 답에만, 복사는 답 본문만.
+  삭제는 확인 창 뒤 **그 질문과 답을 함께** 지운다 (`deleteExchange`). 전체 지우기는 위쪽 휴지통
+- **시크릿 모드** — 위쪽 모자·안경 아이콘(`incognito_icon.dart`). 켜면 어두운 화면에 빈 대화, 여기 대화는 **폰에 저장하지 않고** 끄거나 나가면 사라진다.
+  질문이 서버와 LLM 으로 가는 것은 같다 (서버는 질문을 저장·로그하지 않고 횟수만 센다)
+- **신고 창** (`report_dialog.dart`) — 사유 하나 고르기: "{이름}의 사상과 맞지 않음", 폭력적인 발화, 혐오·차별 표현, 선정적인 내용, 사실과 다른 내용,
+  위험하거나 부적절한 조언, 기타(직접 입력 필수). **질문과 답이 개발자에게 제공되는 것에 동의하는 체크박스**를 체크해야 보낼 수 있다
 
-**사용자 결정**: 구글 · 애플 · 이메일 로그인. 로그인돼 있으면 로그인 화면 없이 바로 넘어간다. 처음 실행 화면도 만든다.
-**구현은 Firebase Authentication** (내 선택 — 세 방식을 무료로 한 번에 지원하고 Flutter·Android 공식 지원. 대안은 Supabase).
-패키지 `firebase_core 4.15`, `firebase_auth 6.7`, `google_sign_in 7.2`. 화면은 기능 확인용이고 디자인은 Codex 몫.
+### 5.4 로그인 (Firebase Authentication)
 
-| 파일 | 역할 |
-|---|---|
-| `state/auth.dart` | `AuthController` (상태 unknown/signedOut/signedIn, 로그인·가입·비밀번호 재설정·로그아웃, `idToken()`), `AuthBackend` 인터페이스, `AppUser`, `AuthFailure`(한국어 문장) |
-| `state/firebase_auth_backend.dart` | Firebase 구현. 구글은 `google_sign_in`(Credential Manager) → `signInWithCredential`, 애플은 `signInWithProvider(AppleAuthProvider)`(Android 에서도 웹 창), 이메일은 `signInWithEmailAndPassword`/`createUser…`/`sendPasswordResetEmail`. Firebase 오류 코드 → 한국어 문장. 사용자가 창을 닫은 취소는 오류로 안 보인다 |
-| `ui/auth_gate.dart` | **켤 때마다** 첫 화면 → 누르면 (로그인됨 → 바로 홈 / 안 됨 → 로그인 / 아직 확인 중 → 잠깐 로딩) |
-| `ui/welcome_screen.dart` | 첫 화면. **화면 아무 데나 누르면** 넘어간다. 켤 때마다 나온다 — 처음엔 "설치 후 한 번만"(`welcomeSeen` 저장)이었는데, 내가 에뮬레이터 확인 중 한 번 넘긴 뒤로 안 떠서 사용자가 "첫 화면이 안 뜬다"고 했다. 켤 때마다로 바꾸고 저장 값은 없앴다 (2026-10-10) |
-| `ui/login_screen.dart` | 구글·애플 버튼, 이메일 로그인/가입 전환, 비밀번호 찾기, 오류 문장. **디버그 빌드에만** "로그인 없이 계속(개발용)" |
-| `ui/home_shell.dart` | 로그인한 계정의 홈. 계정마다 `ChatController` 를 새로 만들고 대화를 **계정별 폴더**(`chats/<uid>/`)에 저장. 아래 탭 화면(`MainTabs`)을 띄운다 |
-| `ui/settings_screen.dart` | 계정 정보(이름·로그인 방식·이메일)와 로그아웃(확인 창). 예전 바둑판 오른쪽 위 계정 메뉴는 2026-10-12 없앴다 |
+- 구글 · 애플 · 이메일. `state/auth.dart`(`AuthController`), `firebase_auth_backend.dart`, `ui/login_screen.dart`, `ui/auth_gate.dart`.
+  계정마다 대화를 따로 저장한다 (`home_shell.dart`)
+- **로그인 화면은 가려 두었다** (2026-10-14 사용자 결정, 포트폴리오 시연용): `state/auth.dart` 의 `const loginScreenEnabled = false`.
+  첫 화면을 누르면 **"로그인 없이 사용 중"**(기기 ID)으로 바로 홈에 간다. 이때 설정의 로그아웃은 숨긴다. `true` 로 바꾸면 로그인 흐름이 돌아온다
+- `google-services.json` 이 없어도 앱이 켜진다 (Gradle 플러그인 조건부 적용, 초기화 실패를 잡는다). 집 PC 에만 있다
+- Firebase 설정 순서: ① 프로젝트 `philo-rag-ef4be` ② Android 앱 등록 시 **SHA-1 을 먼저 등록하고** json 을 받는다(PC 마다 디버그 키가 다르다 —
+  두 번째 PC 는 `"D:\DevProgram\AndroidStudio\jbr\bin\keytool.exe" -list -v -keystore %USERPROFILE%\.android\debug.keystore -alias androiddebugkey -storepass android`)
+  ③ Authentication(콘솔 왼쪽 "보안" 아래)에서 이메일·Google 을 켠 **뒤에** json 을 받는다 — 켜기 전에 받으면 `oauth_client` 가 비어 있다
+  ④ `.env` 의 `FIREBASE_PROJECT_ID`. 애플은 Apple Developer Program(연 $99)이 있어야 켤 수 있다
+- 실제 기기 로그인은 아직 안 해 봤다 `[확인필요]`. 이메일 가입은 인증 메일을 보내지 않는다
 
-- **로그인 화면을 가렸다 (2026-10-14, 사용자 결정 — 포트폴리오 시연용, "그냥 가리고 자동으로 넘어가게")**:
-  `state/auth.dart` 의 `const loginScreenEnabled = false` 한 곳. 첫 화면을 누르면 로그인 화면 없이 **"로그인 없이 사용 중"**(기기 ID, 토큰 없음)으로
-  바로 홈에 간다 — 디버그·릴리스 모두 (`AuthController.useWithoutLogin`). 전에 로그인해 둔 계정이 있으면 그 계정으로 들어간다.
-  이 상태에서는 설정의 로그아웃을 숨긴다 (눌러도 다시 들어오므로). Firebase 로그인 코드·로그인 화면은 그대로 있고, `true` 로 바꾸면 예전 흐름.
-  서버가 `AUTH_REQUIRED=false` 일 때만 동작한다. 앞의 "Apple 버튼이 눌러도 오류" 문제도 이것으로 화면에서 사라졌다.
-  검증 `auth_flow_test.dart` +2 (가린 상태: 첫 화면 → 바로 홈 / 전에 로그인한 계정은 그대로). 기존 로그인 시험은 `AuthGate(showLogin: true)` 로 돈다.
-  에뮬레이터(릴리스 빌드)에서 첫 화면 → 탭 → 바로 홈, 설정에 "로그인 없이 사용 중"·로그아웃 없음 확인.
-  **릴리스 빌드에는 서버 주소를 바꾸는 메뉴가 없고 기본값이 에뮬레이터 주소(10.0.2.2)라, 실기기에서 시연하려면 디버그 빌드나 배포된 서버가 필요하다**
-- 로그인 유지: Firebase 가 기기에 저장하므로 다시 켜면 `authStateChanges` 가 바로 사용자를 준다 → 첫 화면을 누르면 로그인 화면 없이 홈.
-  첫 화면이 떠 있는 동안 로그인 상태 확인이 끝나므로 누른 뒤 로딩은 거의 안 보인다
-- **화면 디자인은 Codex 가 다듬는 중** (앱 이름 "쉼표,", `ui/app_theme.dart` 다크 테마, 2026-10-10).
-  **Codex 에게는 커밋·푸시를 시키지 않는다 — Codex 수정분도 Claude 가 함께 커밋·푸시한다** (사용자 2026-10-12).
-  Codex 가 만든 일러스트의 생성 프롬프트·미리보기는 `output/illustration-samples/` 에 있다 (그림 출처 기록)
-- 서버 연결: `PhiloRagClient(idToken: auth.idToken)` 이 요청마다 `Authorization: Bearer` 를 붙인다 (토큰은 1시간짜리라 SDK 가 알아서 갱신).
-  서버 `auth.py` 가 Google 공개키로 검증 — **서비스 계정 키 불필요, `FIREBASE_PROJECT_ID` 만**. 401 은 `ApiException.isAuthError`
-- **Firebase 설정이 없어도 앱이 켜진다**: `google-services.json` 이 없으면 Gradle 의 google-services 플러그인이 적용되지 않고
-  (`app/build.gradle.kts` 의 조건부 apply), `Firebase.initializeApp()` 실패를 잡아 `available=false` 로 돈다. **기기에서는 아직 확인 안 함** `[확인필요]`
-- `google-services.json` 은 **gitignore** — API 키가 들어 있어 공개 저장소에 안 올린다. `.env` 처럼 두 PC 에 직접 복사
-- 첫 빌드 때 Gradle 이 SDK 에 CMake 3.22.1 을 자동 설치했다 (어느 플러그인이 요구했는지는 미확인)
-- 검증: `mobile/test/auth_flow_test.dart` 6개 (가짜 로그인: 첫 실행 흐름·로그인 유지·세 방식·가입 전환과 비밀번호 검사·오류 문장·설정 전 우회),
-  `backend/tests/test_auth.py` 8개 (정상 토큰 → 계정 기준 집계 / 위조 401 / 헤더 형식 / 미필수 시 기기 ID / 필수 시 401 / 프로젝트 ID 없음 / 다른 프로젝트 / uid 형식)
+### 5.5 빌드 · 에뮬레이터
 
-**설정 순서 (사용자가 Firebase 콘솔에서)**:
-1. console.firebase.google.com → 프로젝트 만들기 (애널리틱스는 꺼도 된다)
-2. Android 앱 추가: 패키지 `com.philorag.philo_rag`, **SHA-1 을 먼저 등록한 뒤** `google-services.json` 을 받는다 (나중에 등록하면 다시 받아야 한다).
-   SHA-1 은 PC 마다 다르다 (디버그 키가 PC 별). 집 PC: `26:22:6F:ED:D3:41:31:3F:3B:8E:E5:80:7E:9D:01:F7:FA:05:76:74`.
-   두 번째 PC 는 `"D:\DevProgram\AndroidStudio\jbrin\keytool.exe" -list -v -keystore %USERPROFILE%\.android\debug.keystore -alias androiddebugkey -storepass android` 로 확인해 추가.
-   출시 때는 Play 앱 서명 키의 SHA-1 도 추가해야 한다
-3. `google-services.json` → 두 PC 의 `mobile/android/app/` 에 복사
-4. Authentication → 로그인 방법: **이메일/비밀번호**, **Google** 사용 설정. **Apple** 은 Apple Developer 의 Services ID·Team ID·Key 가 필요 (유료)
-5. 프로젝트 설정의 **프로젝트 ID** → 두 PC 의 `backend/.env` `FIREBASE_PROJECT_ID=` → 서버 재시작
-6. 앱 다시 빌드. 다 되면 `.env` `AUTH_REQUIRED=true` (로그인 안 한 요청을 막는다)
+- **`android/gradle.properties` 에 `kotlin.incremental=false`** — Kotlin 증분 캐시 오류(`Could not close incremental caches`)로 빌드가 실패해서. 원인 미상
+- 개발 서버가 http 라 `AndroidManifest.xml` 에 `usesCleartextTraffic="true"` + `INTERNET`. **배포 시 https 로 바꾸고 지운다**
+- 에뮬레이터에서 PC 키보드로는 한글이 안 들어간다 — 에뮬레이터 Gboard 에 한국어 자판을 추가하거나 붙여넣기. adb `input text` 도 한글이 안 된다
+- 첫 빌드 2분 47초, 이후 30초 안팎. **release APK 59.3MB** (`--split-per-abi`·글꼴 서브셋 미적용). 글꼴은 고운바탕 2종(OFL)만
+- 에뮬레이터 캡처: `adb exec-out screencap -p > x.png`. 화면 가장자리에 초록 테두리가 찍힐 때가 있다 (앱과 무관, 다시 찍으면 된다).
+  Git Bash 에서 기기 쪽 경로를 쓰면 `MSYS_NO_PATHCONV=1`. `run-as` 는 디버그 빌드에서만 된다
 
-**Claude Code 와의 연결**: 별도 설정이 없다. 모노레포라 저장소 루트(`D:\ai_project\philo_rag`)에서 연 Claude Code 세션이
-`mobile/` 까지 그대로 다룬다. 이 CLAUDE.md 가 앱 규칙까지 담는다. Codex 도 같은 루트에서 열고 이 파일을 읽게 한다.
-Flutter 명령은 `C:\dev\flutter\bin` 이 PATH 에 있어야 한다 (VS Code 통합 터미널은 PATH 를 물려받으므로 그대로 된다).
+### 5.6 한글 낱말 줄바꿈 (`keep_words.dart`)
+
+Flutter 는 한글을 글자 단위로 줄바꿈하고 CSS `word-break: keep-all` 같은 설정이 없다. `keep_words.dart` 가 낱말 글자 사이에
+보이지 않는 단어 잇기 문자(U+2060)를 넣어 띄어쓰기에서만 줄이 바뀌게 한다.
+**화면 파일은 `import 'package:flutter/material.dart' hide Text;` + `import 'keep_words.dart';`** 로 쓴다 (새 화면도, Codex 도).
+한 낱말짜리와 25자 넘는 덩어리는 그대로, 화면 낭독기와 복사에는 원래 글. 입력칸은 건드리지 않는다.
+테스트는 `find.text` 대신 `test/text_finders.dart` 의 `findText`/`findTextContaining`.
+
+### 5.7 테스트
+
+`mobile/test/` — **53개** (`flutter test`). 가짜 서버·가짜 로그인. `design_preview_test.dart` 는 `output/design-2026-10-14/` 의 미리보기 PNG 를 다시 만든다.
+
+## 6. 답변 평가
+
+- **세트**: `scripts/eval_questions.json` 31문항 — 철학자마다 일반 · 개념어 · 행적 · 토론 · 잡담 · 미혹 · 위기 (니체는 위기 2문항)
+- **실행**: `python scripts/eval_answers.py [문항 ID …]` — 서버 `/ask` 에 보내고 경로(근거 있음 / 직접 다루지 않음 / 경계 / 안전 안내)를 자동 검사해
+  `output/Portfolio/eval/answers-*.json` 에 저장한다. **실제 LLM 호출이라 사용자 지시 때만**
+- **판정**: 사람이 모든 답을 읽고 근거 구절·코퍼스와 대조한다. 기준은 셋 — **논지 일치**(구절의 방향을 뒤집지 않았는가) / **인용 적합성**(이 질문에 맞는 구절인가) /
+  **발화자 정합**(본인의 말·겪은 일로 말하는가). 신학·불교의 맥락 판단은 해당 전통을 아는 사람이 해야 한다 (사용자가 예수 답 하나를 내 판정과 다르게 봤고 사용자가 옳았다)
+- **결과**: [`output/Portfolio/eval/report-2026-10-14.md`](output/Portfolio/eval/report-2026-10-14.md)
+
+| | 통과 | 주의 | 실패 | 응답 평균 (최대) | 재생성 |
+|---|---|---|---|---|---|
+| 첫 측정 (30문항) | 23 | 4 | 3 (전부 예수) | 6.0초 (19.7초) | 7회 |
+| **수정 후 (31문항, 2026-10-14)** | **29** | **2** | **0** | **5.7초 (11.6초)** | **2회** |
+
+- 첫 측정 실패의 원인과 수정 (모두 사용자 결정): J02 돈 걱정이 위기로 분류됨 → 위기 기준을 "자기 생명에 관한 말"로 좁힘 /
+  J04·J06 근거가 있는데 "가르친 바가 아니니라"로 시작 → 분류 호출이 질문 종류까지 정하게 함(4.3) / J01 "있으리요" 오탐 → `~리요` 허용 /
+  J06 구레네 시몬 구절 미검색 → 개념어 사전 "십자가"
+- 남은 주의 2건: B04 열반 답이 여시어경 72 의 세 가지 벗어남을 모두 열반으로 묶음(불교 쪽 확인 필요), B08 잡담 경로에서 부처가 "아이폰을 택한다"
+- N08 점심 메뉴를 지어내는 것은 사소한 잡담이라 그대로 둔다 (사용자 결정)
+
+## 7. 지금도 유효한 교훈
+
+1. **근거가 없을 때 "네가 한 말 중 가장 가까운 것을 말하라"고 시키면 학습 기억으로 지어낸다.** RAG 의 근거 보장은 검색된 구절에만 미친다.
+   그래서 근거 없는 답은 첫 문장으로 "직접 다룬 문제가 아니다"를 밝힌다
+2. **온도를 낮춰도 창작은 줄지 않는다.** 온도 0 은 가장 그럴듯한 연상을 더 확실하게 고른다. 온도 0 이어도 같은 질문의 답은 매번 다르다.
+   창작을 줄이는 것은 구절 밖 금지 프롬프트·코퍼스 대조·모델뿐이다
+3. **프롬프트 수정의 효과는 여러 번 돌려 봐야 안다.** 한 번 돌려 "고쳐졌다"고 판단했다가 다시 돌리니 위반이 되살아났다. 말투는 프롬프트로 보장되지 않아 코드로 검사한다
+4. **프롬프트는 짧을수록 낫다.** 875토큰 → 250토큰대로 줄이자 답이 짧아지고 자연스러워졌다. 예시는 복사된다
+5. **어휘 적중 지표는 논지 역전을 못 잡는다.** "근거 이미지 적중률" 만점 답 두 개가 대조해 보니 둘 다 구절의 논지를 뒤집고 있었다 → 사람 판정 3기준으로 바꿨다
+6. **추론 모델은 끄지 않으면 보이지 않는 토큰이 비용의 대부분이다** (Gemini 사고 토큰은 출력의 84~95%). gpt-5.6-luna 는 effort none 으로 질문당 약 $0.001
+7. **점수 기준선으로는 답할 질문을 가를 수 없다.** 0.45 일 때 「바람직한 삶」(0.448)이 근거 없음으로 떨어졌다 → 기준선은 낮추고 분류 호출이 질문 종류를 정한다
+8. **음차·한자어 개념어는 다국어 임베딩에도 약하다** → 검색어에만 원어를 덧붙이는 사전. 문장 번역은 오히려 나빴다
+9. **모델을 바꾸면 없던 결함이 생긴다** (qwen 계열의 겸양어 "저는/제가"). 교체 때는 전체 문항을 다시 돌린다
+10. **안전은 모델에 맡기지 않는다.** 위기 안내 문구는 사람이 쓴 고정 문장을 코드가 붙인다. 소형 모델은 "자살을 말하면 109 를 안내하라" 같은 조건 규칙을 못 지켰다
+
+## 8. 남은 일
+
+**베타(지인 대상)에 필요한 것**
+- 서버를 밖에서 접속할 수 있게 올리기 (GPU 없는 환경의 임베딩 처리 결정 포함), 릴리스 빌드의 서버 주소
+- https 전환과 `usesCleartextTraffic` 제거, CORS 좁히기, `/chat` 삭제
+- `AUTH_REQUIRED=true` 와 로그인 화면 되살리기 (`loginScreenEnabled`), 실제 기기 로그인 확인
+- 신고(`reports.db`)는 사용자의 질문·답을 담는다 — 보관 기간·개인정보 처리방침. 신고 처리(완료·삭제) 기능 없음
+- 두 번째 PC: `google-services.json`, `.env`(`FIREBASE_PROJECT_ID`·`ADMIN_USERS`), SHA-1 등록 후 json 다시 받기
+
+**품질**
+- 복음서 청크가 비유 경계와 무관하다 — 탕자(눅 15:11~32)가 `15:1~15:16` / `15:17~15:32` 로 갈려 「탕자는 왜 돌아왔습니까?」에 상위 3위 안에 안 든다. 비유 단위 분할 필요
+- 불교 쪽 사람의 교차 검증, `glossary.py` 용어 표 검토. `CULT_PATTERNS` 목록 사용자 검토
+- `sources` 에 같은 `ref` 가 두 번 나올 수 있다 (640 토큰을 넘어 쪼개진 절). 부처 최대 청크 645 > 640
+- 페르소나별 분량 불균형 (니체 29.6만 / 부처 12.0만 / 예수 6.5만 단어) — 인덱스가 분리돼 있어 검색이 섞이지는 않는다

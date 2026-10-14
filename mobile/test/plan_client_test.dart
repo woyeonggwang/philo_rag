@@ -1,4 +1,4 @@
-// 요금제 한도 관련 앱 쪽 — 서버 없이 MockClient 로 확인한다 (CLAUDE.md 13절, backend/app/plans.py).
+// 요금제 한도 관련 앱 쪽 — 서버 없이 MockClient 로 확인한다 (CLAUDE.md 4.8, backend/app/plans.py).
 // 실행: mobile 폴더에서  flutter test
 import 'dart:convert';
 

@@ -12,7 +12,7 @@
 
 **JSONL 은 여기서 만들지 않는다.** `.txt` 를 만든 뒤 `scripts/build_jsonl.py` 를 돌린다.
 JSONL 스키마의 단일 출처는 build_jsonl.py 이고, 여기서 따로 만들면 필드가 어긋난다
-(uid / seq / anomaly 등이 빠진다. CLAUDE.md 3절·6.3 참조).
+(uid / seq / anomaly 등이 빠진다. CLAUDE.md 3.4 참조).
 
 build_books.py / build_zarathustra.py 와 달리 경로를 인자로 받는다 — 그 둘은 컨테이너
 경로(`/home/claude/...`)가 박혀 있어 로컬에서 그대로 돌아가지 않는다.
@@ -40,7 +40,7 @@ def build(raw_dir: Path, b: dict) -> list[dict]:
         return []
 
     text = src.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
-    # 곡선 따옴표·비분리 공백을 ASCII 로 (CLAUDE.md 3절)
+    # 곡선 따옴표·비분리 공백을 ASCII 로 (CLAUDE.md 3.4)
     text = (text.replace("\u2019", "'").replace("\u2018", "'")
                 .replace("\u201c", '"').replace("\u201d", '"')
                 .replace("\u00a0", " "))

@@ -6,7 +6,7 @@
 <title>철학 RAG 테스트</title>
 <!--
   개발용 채팅 테스트 화면 (2026-10-10). 백엔드가 GET /chat 으로 내준다 (main.py).
-  /ask 를 그대로 부르므로 질문 1개 = LLM 호출 1~2회 (비용 발생). 배포 전에 지울 것 (CLAUDE.md 12절).
+  /ask 를 그대로 부르므로 질문 1개 = LLM 호출 1~2회 (비용 발생). 배포 전에 지울 것 (CLAUDE.md 8절).
   대화는 이 페이지 메모리에만 있다 — 새로고침하면 사라진다.
 -->
 <style>
@@ -113,7 +113,7 @@
 <script>
 "use strict";
 
-// 지금까지 시험했던 질문들 (CLAUDE.md 6.19·6.20). 누르면 바로 보낸다.
+// 지금까지 시험했던 질문들 (CLAUDE.md 6절). 누르면 바로 보낸다.
 const SAMPLES = {
   nietzsche: ["신은 죽었다는 말은 무슨 뜻입니까?", "동정심은 좋은 것 아닌가요?", "남의 시선이 너무 신경 쓰입니다"],
   jesus: ["돈 걱정으로 잠이 안 옵니다", "원수를 어떻게 대해야 합니까?", "용서가 잘 안 됩니다"],
@@ -183,7 +183,7 @@ function bubble(m) {
   const r = m.res;
   const box = el("div", { class: "msg them" },
     el("div", { class: "who" }, r.persona_name, r.safety ? el("span", { class: "badge" }, "안전 안내 포함") : null),
-    // 문장 끝 공백 두 칸 + 줄바꿈(마크다운 줄바꿈)은 정리해서 보여준다 (CLAUDE.md 12절)
+    // 문장 끝 공백 두 칸 + 줄바꿈(마크다운 줄바꿈)은 정리해서 보여준다 (CLAUDE.md 5.3)
     el("div", { class: "answer" }, r.answer.replace(/[ \t]+\n/g, "\n").trim()));
 
   if (r.glossary && r.glossary.length) {

@@ -1,5 +1,5 @@
 /// 백엔드 응답 모델. backend/app/main.py 의 Pydantic 모델과 1:1 이다.
-/// 필드를 바꾸면 서버 쪽도 같이 바꿔야 한다 (CLAUDE.md 9절).
+/// 필드를 바꾸면 서버 쪽도 같이 바꿔야 한다 (CLAUDE.md 4.2).
 library;
 
 class Persona {
@@ -64,7 +64,7 @@ class Source {
       };
 }
 
-/// 답변 속 용어·호칭의 뜻. 각주로 보여준다 (CLAUDE.md 6.20). 지금은 부처만 채워져 있다.
+/// 답변 속 용어·호칭의 뜻. 각주로 보여준다 (CLAUDE.md 4.6). 지금은 부처만 채워져 있다.
 class GlossaryItem {
   final String term;
   final String meaning;
