@@ -7,7 +7,8 @@ Removed: translator prefaces/introductions/footnotes, editor's notes,
          tables of contents, title pages, PG boilerplate,
          posthumous Nachlass compilations, and passages that merely
          duplicate text already held in the Zarathustra corpus.
-Removed material is not deleted - it is written to excluded/ for reference.
+Removed material is not kept anywhere (CLAUDE.md 3.2). drop_excluded() only prints what was cut
+and why - the reasons below are the record of the exclusions.
 """
 import re
 import json
@@ -15,9 +16,7 @@ from pathlib import Path
 
 RAW = Path("/home/claude/nietzsche/raw")
 OUT = Path("/home/claude/nietzsche/clean")
-EXC = Path("/home/claude/nietzsche/excluded")
 OUT.mkdir(parents=True, exist_ok=True)
-EXC.mkdir(parents=True, exist_ok=True)
 
 
 # --------------------------------------------------------------- load / clean
@@ -206,16 +205,15 @@ def emit(key, meta, divisions):
     return records
 
 
-def dump_excluded(name, lines, why):
-    (EXC / name).write_text(
-        f"EXCLUDED FROM THE PERSONA CORPUS\n{why}\n\n" + "\n".join(lines).strip() + "\n",
-        encoding="utf-8")
+def drop_excluded(name, lines, why):
+    """Excluded text is not written anywhere. Only report what was cut."""
+    print(f"  excluded  {name:40s} {len(lines):>5} lines  {why.splitlines()[0]}")
 
 
 # =========================================================== 1. Beyond Good and Evil
 L = pg_body(load("pg4363_bge.txt"))
 a = idx(L, r"^PREFACE$")
-dump_excluded("bge_transcriber_and_toc.txt", L[:a],
+drop_excluded("bge_transcriber_and_toc.txt", L[:a],
               "Transcriber's note and table of contents (Project Gutenberg #4363).")
 bge = parse(L[a:], [
     (r"^PREFACE$", "Preface"),
@@ -234,9 +232,9 @@ r1 = emit("beyond_good_and_evil", dict(
 L = pg_body(load("pg52319_gm.txt"))
 a = idx(L, r"^PREFACE\.$")
 b = idx(L, r"^PEOPLES AND COUNTRIES\. Translated", a)
-dump_excluded("gm_editor_note_and_toc.txt", L[:a],
+drop_excluded("gm_editor_note_and_toc.txt", L[:a],
               "Oscar Levy's editor's note, title page and contents (Project Gutenberg #52319).")
-dump_excluded("gm_peoples_and_countries_nachlass.txt", L[b:],
+drop_excluded("gm_peoples_and_countries_nachlass.txt", L[b:],
               "'Peoples and Countries' - 27 posthumous notebook fragments (Nachlass),\n"
               "translated by J. M. Kennedy. Nietzsche's own words but never published\n"
               "by him; excluded on the same grounds as The Will to Power.")
@@ -260,12 +258,12 @@ ac_a = idx(L, r"^THE ANTICHRIST$", ti_a)
 er_a = idx(L, r"^THE ETERNAL RECURRENCE$", ac_a)
 ti_end = idx(L, r"^THE END\.$", ti_a)
 
-dump_excluded("ti_ludovici_translator_preface.txt", L[:lud_end + 1],
+drop_excluded("ti_ludovici_translator_preface.txt", L[:lud_end + 1],
               "Anthony M. Ludovici's translator's preface (Project Gutenberg #52263).")
-dump_excluded("ti_hammer_speaketh_duplicate.txt", L[ti_end:ac_a],
+drop_excluded("ti_hammer_speaketh_duplicate.txt", L[ti_end:ac_a],
               "'The Hammer Speaketh' - Nietzsche quoting his own Zarathustra III.29.\n"
               "Removed as a verbatim duplicate of text already in zarathustra.txt.")
-dump_excluded("ac_eternal_recurrence_nachlass.txt", L[er_a:],
+drop_excluded("ac_eternal_recurrence_nachlass.txt", L[er_a:],
               "'The Eternal Recurrence' and 'Explanatory Notes to Thus Spake Zarathustra'\n"
               "- posthumous notebook material with Ludovici's translator's preface.\n"
               "Excluded on the same grounds as The Will to Power.")
@@ -313,10 +311,10 @@ L = pg_body(load("pg52190_eh.txt"))
 ti_intro = idx(L, r"^TRANSLATOR'S INTRODUCTION$", 40)
 pref = idx(L, r"^PREFACE$", ti_intro)
 poetry = idx(L, r"^EDITORIAL NOTE TO POETRY$", pref)
-dump_excluded("eh_ludovici_translator_introduction.txt", L[:pref],
+drop_excluded("eh_ludovici_translator_introduction.txt", L[:pref],
               "Title page, contents and Anthony M. Ludovici's translator's introduction\n"
               "(Project Gutenberg #52190).")
-dump_excluded("eh_poetry_appendix.txt", L[poetry:],
+drop_excluded("eh_poetry_appendix.txt", L[poetry:],
               "Oscar Levy's editorial note and the poetry appendix he assembled from\n"
               "Nietzsche's notebooks. Excluded because it is editor-curated Nachlass;\n"
               "'Hymn to Life' is explicitly credited in the source as WORDS BY LOU SALOME.")

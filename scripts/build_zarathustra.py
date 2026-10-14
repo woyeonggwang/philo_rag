@@ -3,10 +3,10 @@
 Project Gutenberg #1998 (Thus Spake Zarathustra, tr. Thomas Common)
 -> RAG corpus in the same shape as the project's mathe.txt (KJV Matthew).
 
-Splits the source into three files:
-  1. zarathustra.txt          - Nietzsche's text only (RAG persona corpus)
-  2. commentary_forster.txt   - Elisabeth Foerster-Nietzsche's introduction (EXCLUDED)
-  3. commentary_ludovici.txt  - Anthony M. Ludovici's appendix notes (EXCLUDED)
+Writes zarathustra.txt - Nietzsche's text only (RAG persona corpus).
+Elisabeth Foerster-Nietzsche's introduction (1905) and Anthony M. Ludovici's appendix notes (1909)
+are located only to cut them off. They are not written anywhere - excluded text is not kept in this
+project (CLAUDE.md 3.2).
 """
 import re
 import json
@@ -59,9 +59,7 @@ i_body = find(r"^THUS SPAKE ZARATHUSTRA\.$", i_intro + 1)
 i_appx = find(r"^APPENDIX\.$", i_body)
 i_end = find(r"^\*\*\* END OF THE PROJECT GUTENBERG", i_appx)
 
-intro_lines = lines[i_intro:i_body]
-body_lines = lines[i_body + 1:i_appx]
-appx_lines = lines[i_appx:i_end]
+body_lines = lines[i_body + 1:i_appx]     # introduction (i_intro..i_body) and appendix (i_appx..) are dropped
 
 
 # --------------------------------------------------------------- body parse
@@ -169,8 +167,8 @@ header = [
     "Source: Project Gutenberg eBook #1998 - public domain",
     "",
     "Nietzsche's text only. The 1905 introduction by Elisabeth Foerster-Nietzsche",
-    "and the 1909 appendix notes by Anthony M. Ludovici have been removed;",
-    "they are kept separately as commentary_forster.txt / commentary_ludovici.txt.",
+    "and the 1909 appendix notes by Anthony M. Ludovici have been removed",
+    "and are not kept in this project.",
     "",
     "Citation format:  <chapter>:<paragraph>   e.g. 1:14 = chapter I, paragraph 14",
     "Prologue is chapter 0.  [SS n] marks an author-numbered section within a chapter.",
@@ -201,19 +199,6 @@ for ch in chapters:
 (OUT / "zarathustra.txt").write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
 (OUT / "zarathustra_units.jsonl").write_text(
     "\n".join(json.dumps(r, ensure_ascii=False) for r in records) + "\n", encoding="utf-8")
-
-(OUT / "commentary_forster.txt").write_text(
-    "COMMENTARY - NOT NIETZSCHE'S TEXT\n"
-    "Introduction by Elisabeth Foerster-Nietzsche, Weimar, December 1905.\n"
-    "Source: Project Gutenberg eBook #1998. Excluded from the persona corpus.\n\n"
-    + normalize("\n".join(intro_lines)).strip() + "\n", encoding="utf-8")
-
-(OUT / "commentary_ludovici.txt").write_text(
-    "COMMENTARY - NOT NIETZSCHE'S TEXT\n"
-    "Appendix notes by Anthony M. Ludovici, London, February 1909.\n"
-    "Source: Project Gutenberg eBook #1998. Excluded from the persona corpus.\n\n"
-    + normalize("\n".join(appx_lines)).strip() + "\n", encoding="utf-8")
-
 
 # -------------------------------------------------------------------- stats
 words = sum(len(r["text"].split()) for r in records)

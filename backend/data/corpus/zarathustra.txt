@@ -4,8 +4,8 @@ Friedrich Nietzsche (1844-1900), translated by Thomas Common (1850-1919)
 Source: Project Gutenberg eBook #1998 - public domain
 
 Nietzsche's text only. The 1905 introduction by Elisabeth Foerster-Nietzsche
-and the 1909 appendix notes by Anthony M. Ludovici have been removed;
-they are kept separately as commentary_forster.txt / commentary_ludovici.txt.
+and the 1909 appendix notes by Anthony M. Ludovici have been removed
+and are not kept in this project.
 
 Citation format:  <chapter>:<paragraph>   e.g. 1:14 = chapter I, paragraph 14
 Prologue is chapter 0.  [SS n] marks an author-numbered section within a chapter.
